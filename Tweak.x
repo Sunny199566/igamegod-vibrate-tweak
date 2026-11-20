@@ -45,12 +45,12 @@ static void PlayCustomHaptic(void) {
 %hook UIImageView
 %new
 - (void)igod_doubleTapToggle:(UITapGestureRecognizer *)gesture {
-    UIImageView *imgView = (UIImageView *)gesture.view;
-    CGFloat currentAlpha = imgView.layer.opacity;
-    if(currentAlpha > 0.5f) {
-        imgView.layer.opacity = 0.0f;
+    UIView *targetView = gesture.view;
+    // ✅ 关键：0.02 > 0.01，绕过iOS hitTest过滤！触摸拖拽永久有效
+    if(targetView.alpha > 0.5f) {
+        targetView.alpha = 0.02f;
     } else {
-        imgView.layer.opacity = 1.0f;
+        targetView.alpha = 1.0f;
     }
     PlayCustomHaptic();
 }
@@ -83,9 +83,8 @@ static void PlayCustomHaptic(void) {
         UIView *tapView = self.view;
         if (!tapView) return;
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
-            UIImageView *imgV = (UIImageView *)tapView;
-            // layer.opacity >0.5（图标可见）才触发单击震动
-            if(imgV.layer.opacity > 0.5f) {
+            // >0.5判定不变，0.02状态不会触发单击震动
+            if(tapView.alpha > 0.5f) {
                 SetupHapticEngine();
                 PlayCustomHaptic();
             }
