@@ -51,7 +51,6 @@ static void PlayCustomHaptic(void) {
     } else {
         targetView.alpha = 1.0f;
     }
-    // ✅ 双击只触发震动，**不会触发游戏脚本**
     PlayCustomHaptic();
 }
 
@@ -62,7 +61,6 @@ static void PlayCustomHaptic(void) {
         UITapGestureRecognizer *singleTap = nil;
         UITapGestureRecognizer *existDoubleTap = nil;
 
-        // 遍历查找已存在的手势
         for(UIGestureRecognizer *g in view.gestureRecognizers) {
             if([g isKindOfClass:[UITapGestureRecognizer class]]) {
                 UITapGestureRecognizer *tap = (UITapGestureRecognizer *)g;
@@ -80,7 +78,6 @@ static void PlayCustomHaptic(void) {
             dtap.cancelsTouchesInView = NO;
             [view addGestureRecognizer:dtap];
 
-            // ✅ 核心修复：单击手势必须等双击识别失败之后，才可以触发，杜绝双击时误触发单击脚本
             if(singleTap) {
                 [singleTap requireGestureRecognizerToFail:dtap];
             }
@@ -97,7 +94,7 @@ static void PlayCustomHaptic(void) {
         if (!tapView) return;
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
             UITapGestureRecognizer *tapSelf = (UITapGestureRecognizer *)self;
-            // ✅ 只允许【单击手势】并且小球可见的时候，才执行震动+脚本
+            // ==========核心判断：单击手势 + 小球可见alpha>0.5，才执行脚本震动！隐藏状态直接跳过==========
             if(tapSelf.numberOfTapsRequired == 1 && tapView.alpha > 0.5f) {
                 SetupHapticEngine();
                 PlayCustomHaptic();
