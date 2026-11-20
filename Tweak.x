@@ -42,16 +42,15 @@ static void PlayCustomHaptic(void) {
     }
 }
 
-// ========== 新增双击显隐部分 ==========
 %hook UIImageView
 %new
 - (void)igod_doubleTapToggle:(UITapGestureRecognizer *)gesture {
-    UIView *targetView = gesture.view;
-    // ========== 这里是修复点：0.01 代替 0，保留触摸能力 ==========
-    if (targetView.alpha > 0.5f) {
-        targetView.alpha = 0.01f;
+    UIImageView *imgView = (UIImageView *)gesture.view;
+    CGFloat currentAlpha = imgView.layer.opacity;
+    if(currentAlpha > 0.5f) {
+        imgView.layer.opacity = 0.0f;
     } else {
-        targetView.alpha = 1.0f;
+        imgView.layer.opacity = 1.0f;
     }
     PlayCustomHaptic();
 }
@@ -84,8 +83,9 @@ static void PlayCustomHaptic(void) {
         UIView *tapView = self.view;
         if (!tapView) return;
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
-            // alpha>0.5才触发单击震动，0.01状态不会误触发
-            if(tapView.alpha > 0.5f) {
+            UIImageView *imgV = (UIImageView *)tapView;
+            // layer.opacity >0.5（图标可见）才触发单击震动
+            if(imgV.layer.opacity > 0.5f) {
                 SetupHapticEngine();
                 PlayCustomHaptic();
             }
