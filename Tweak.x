@@ -60,6 +60,18 @@ static UIViewController* getTopViewController(void) {
     return topVC;
 }
 
+static void setTapGestureEnable(UIView *floatView, BOOL enable) {
+    for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
+        if([g isKindOfClass:[UITapGestureRecognizer class]]) {
+            UITapGestureRecognizer *tapGes = (UITapGestureRecognizer *)g;
+            if(tapGes.numberOfTapsRequired == 1) {
+                tapGes.enabled = enable;
+                break;
+            }
+        }
+    }
+}
+
 static void showVisibleMenu(UIView *floatView) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     
@@ -75,8 +87,8 @@ static void showVisibleMenu(UIView *floatView) {
     }];
     
     UIAlertAction *hideAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        // ✅ 使用 isHidden，视图不再接收任何触摸事件，单击脚本彻底不会触发
-        floatView.hidden = YES;
+        floatView.alpha = 0.02f;
+        setTapGestureEnable(floatView, NO); // ✅ 隐藏：直接禁用单击手势，不再接收单击事件
     }];
     
     UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil];
@@ -95,12 +107,13 @@ static void showVisibleMenu(UIView *floatView) {
 - (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
     if(gesture.state != UIGestureRecognizerStateBegan) return;
     UIView *floatView = self;
-    if(floatView.isHidden == NO) {
+    if(floatView.alpha > 0.5f) {
         // ✅ 显示状态，弹出选择菜单
         showVisibleMenu(floatView);
     } else {
-        // ✅ 隐藏状态：长按直接恢复显示
-        floatView.hidden = NO;
+        // ✅ 隐藏状态：长按恢复显示，开启单击手势
+        floatView.alpha = 1.0f;
+        setTapGestureEnable(floatView, YES);
     }
 }
 
@@ -130,20 +143,7 @@ static void showVisibleMenu(UIView *floatView) {
 %hook UITapGestureRecognizer
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
-    if(state == UIGestureRecognizerStateRecognized) {
-        UIView *tapView = self.view;
-        if (!tapView) return;
-        if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
-            UITapGestureRecognizer *tapSelf = (UITapGestureRecognizer *)self;
-            if(tapSelf.numberOfTapsRequired == 1) {
-                // ✅ 双重保险：只有视图没有被 hidden 的时候，才执行震动脚本
-                if (!tapView.isHidden) {
-                    SetupHapticEngine();
-                    PlayCustomHaptic();
-                }
-            }
-        }
-    }
+    // ✅ 这里不需要再判断alpha，手势已经通过enabled开关控制了
 }
 %end
 
