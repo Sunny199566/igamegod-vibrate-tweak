@@ -3,6 +3,7 @@
 
 static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
+static const NSInteger kOriginTimeLabelTag = 998878;
 static NSTimer *floatLabelRefreshTimer = nil;
 
 static void SetupHapticEngine(void) {
@@ -83,11 +84,11 @@ static void showVisibleMenu(UIView *floatView) {
     }
 }
 
-#pragma mark - ✅ 挂载到悬浮球父视图，悬浮球正下方
+#pragma mark - 扫描并隐藏原生计时Label + 更新我们自定义Label
 static void RefreshFloatLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        // ✅ 修复：增加 __block
         __block UIView *floatBall = nil;
+        __block UILabel *originTimeLabel = nil;
         for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
             if (![scene isKindOfClass:[UIWindowScene class]]) continue;
             for (UIWindow *win in scene.windows) {
@@ -96,7 +97,13 @@ static void RefreshFloatLabel(void) {
                     if ([view isKindOfClass:[UIImageView class]]) {
                         if ((int)view.bounds.size.width == 44 && (int)view.bounds.size.height ==44) {
                             floatBall = view;
-                            return;
+                        }
+                    }
+                    // 识别原生计时Label（白色大字体，数字冒号格式）
+                    if ([view isKindOfClass:[UILabel class]]) {
+                        UILabel *lb = (UILabel *)view;
+                        if(lb.textColor == [UIColor whiteColor] && lb.font.pointSize >= 28 && [lb.text containsString:@":"]){
+                            originTimeLabel = lb;
                         }
                     }
                     for(UIView *sub in view.subviews) {
@@ -104,31 +111,35 @@ static void RefreshFloatLabel(void) {
                     }
                 };
                 scanView(win);
-                if(floatBall) break;
+                if(floatBall && originTimeLabel) break;
             }
-            if(floatBall) break;
+            if(floatBall && originTimeLabel) break;
+        }
+        // 隐藏原生时间文字，解决重叠
+        if(originTimeLabel){
+            originTimeLabel.tag = kOriginTimeLabelTag;
+            originTimeLabel.hidden = YES;
         }
         if(!floatBall) return;
         UIView *parentView = floatBall.superview;
         UILabel *customLabel = (UILabel *)[parentView viewWithTag:kCustomTimeBatteryTag];
         if (!customLabel) {
-            // 位置：悬浮球正下方，向下偏移8px，居中对齐
             CGRect ballFrame = floatBall.frame;
-            CGRect labelFrame = CGRectMake(ballFrame.origin.x - 23, ballFrame.origin.y + ballFrame.size.height + 8, 90, 22);
+            CGRect labelFrame = CGRectMake(ballFrame.origin.x - 35, ballFrame.origin.y + ballFrame.size.height + 8, 120, 28);
             customLabel = [[UILabel alloc] initWithFrame:labelFrame];
             customLabel.tag = kCustomTimeBatteryTag;
-            customLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightMedium];
+            customLabel.font = [UIFont systemFontOfSize:28 weight:UIFontWeightMedium];
             customLabel.textColor = [UIColor whiteColor];
             customLabel.textAlignment = NSTextAlignmentCenter;
             customLabel.backgroundColor = [UIColor clearColor];
             [parentView addSubview:customLabel];
         }
-        // 跟随悬浮球坐标实时更新位置（拖动悬浮球文字自动跟着走）
+        // 跟随悬浮球坐标更新位置
         CGRect ballFrame = floatBall.frame;
-        customLabel.frame = CGRectMake(ballFrame.origin.x - 23, ballFrame.origin.y + ballFrame.size.height + 8, 90, 22);
+        customLabel.frame = CGRectMake(ballFrame.origin.x - 35, ballFrame.origin.y + ballFrame.size.height + 8, 120, 28);
         customLabel.hidden = (floatBall.alpha < 0.1f);
         
-        // 文字：HH:mm • 电量%，无秒数
+        // 渲染文字：HH:mm • 电量%
         NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
         fmt.dateFormat = @"HH:mm";
         NSString *timeStr = [fmt stringFromDate:[NSDate date]];
@@ -138,7 +149,7 @@ static void RefreshFloatLabel(void) {
     });
 }
 
-#pragma mark - 悬浮球逻辑
+#pragma mark - 悬浮球Hook
 %hook UIImageView
 %new
 - (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
