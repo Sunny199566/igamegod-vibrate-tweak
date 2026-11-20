@@ -2,6 +2,7 @@
 #import <CoreHaptics/CoreHaptics.h>
 
 static CHHapticEngine *sharedHapticEngine = nil;
+static void (^g_doubleTapBlock)(UITapGestureRecognizer *gesture);
 
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine != nil) return;
@@ -42,6 +43,12 @@ static void PlayCustomHaptic(void) {
     }
 }
 
+static void DoubleTapHandler(UITapGestureRecognizer *gesture) {
+    if(g_doubleTapBlock) {
+        g_doubleTapBlock(gesture);
+    }
+}
+
 %hook UIImageView
 - (void)didMoveToWindow {
     %orig;
@@ -55,11 +62,13 @@ static void PlayCustomHaptic(void) {
             }
         }
         if (!hasDoubleTap) {
-            UITapGestureRecognizer *doubleTap = [[UITapGestureRecognizer alloc] initWithActionBlock:^(UITapGestureRecognizer * _Nonnull gesture) {
+            g_doubleTapBlock = [^(UITapGestureRecognizer *gesture) {
                 UIView *targetView = gesture.view;
                 targetView.alpha = (targetView.alpha > 0.5f) ? 0.0f : 1.0f;
                 PlayCustomHaptic();
-            }];
+            } copy];
+
+            UITapGestureRecognizer *doubleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(DoubleTapHandler:)];
             doubleTap.numberOfTapsRequired = 2;
             doubleTap.cancelsTouchesInView = NO;
             [view addGestureRecognizer:doubleTap];
