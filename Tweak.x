@@ -3,19 +3,19 @@
 #import <dispatch/dispatch.h>
 
 static CHHapticEngine *sharedHapticEngine = nil;
-static UILabel *g_timeBatteryLabel = nil;
-static NSTimer *g_refreshTimer = nil;
+static const NSInteger kCustomTimeBatteryTag = 998877;
 
-// ========= 时间电量模块【完全原样不动】 =========
+// ========= 时间电量刷新 =========
 static void RefreshTimeBatteryLabel(void) {
-    if (!g_timeBatteryLabel) return;
+    UILabel *customLabel = (UILabel *)[[UIApplication sharedApplication].keyWindow viewWithTag:kCustomTimeBatteryTag];
+    if (!customLabel) return;
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
     fmt.dateFormat = @"HH:mm";
     NSString *timeStr = [fmt stringFromDate:[NSDate date]];
 
     [UIDevice currentDevice].batteryMonitoringEnabled = YES;
     NSInteger batteryPercent = roundf([UIDevice currentDevice].batteryLevel * 100);
-    g_timeBatteryLabel.text = [NSString stringWithFormat:@"%@ • %ld%%", timeStr, (long)batteryPercent];
+    customLabel.text = [NSString stringWithFormat:@"%@ • %ld%%", timeStr, (long)batteryPercent];
 }
 
 static UIViewController* GetRootVC(void) {
@@ -32,20 +32,31 @@ static UIViewController* GetRootVC(void) {
 - (void)didMoveToSuperview {
     %orig;
     CGRect frm = self.frame;
+    // 命中原生时间Label
     if ((int)frm.size.width == 50 && (int)frm.size.height == 20 && (int)frm.origin.x == -3 && (int)frm.origin.y == 47) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if(g_timeBatteryLabel) return;
+            // ✅ 直接隐藏原生时间文字，解决双重显示
+            self.alpha = 0.0f;
+
             UIView *superV = self.superview;
+            if(!superV) return;
+            // ✅ 根据tag判断是否已经创建，防止重复创建长条错位
+            UILabel *existLabel = (UILabel *)[superV viewWithTag:kCustomTimeBatteryTag];
+            if(existLabel) return;
+
             CGRect newFrame = CGRectMake(frm.origin.x, frm.origin.y, 90, 20);
-            g_timeBatteryLabel = [[UILabel alloc] initWithFrame:newFrame];
+            UILabel *g_timeBatteryLabel = [[UILabel alloc] initWithFrame:newFrame];
+            g_timeBatteryLabel.tag = kCustomTimeBatteryTag;
             g_timeBatteryLabel.font = self.font;
             g_timeBatteryLabel.textColor = self.textColor;
             g_timeBatteryLabel.textAlignment = NSTextAlignmentRight;
             g_timeBatteryLabel.backgroundColor = [UIColor clearColor];
             [superV addSubview:g_timeBatteryLabel];
-            
-            if(g_refreshTimer) [g_refreshTimer invalidate];
-            g_refreshTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer * _Nonnull timer) {
+
+            // 定时器刷新
+            static NSTimer *timer = nil;
+            if(timer) [timer invalidate];
+            timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer * _Nonnull timer) {
                 RefreshTimeBatteryLabel();
             }];
             RefreshTimeBatteryLabel();
@@ -102,8 +113,9 @@ static void SetupHapticEngine(void) {
     CGRect frm = self.frame;
     if ((int)frm.size.width == 50 && (int)frm.size.height == 50) {
         SetupHapticEngine();
+        if(!sharedHapticEngine) return;
         NSError *err = nil;
-        // ✅ 完全复原你原来参数：强度1.0，锐度1.0，持续0.6s
+        // ✅ 保留你原始参数：强度1.0，锐度1.0，持续0.6s
         CHHapticEvent *event = [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous parameters:@[
             [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0f],
             [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:1.0f]
@@ -135,6 +147,7 @@ static void SetupHapticEngine(void) {
         if(!hasLongPress) {
             UILongPressGestureRecognizer *longTap = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(tweakLongPressAction:)];
             longTap.minimumPressDuration = 0.25f;
+            longTap.allowableMovement = 10.0f;
             [self addGestureRecognizer:longTap];
         }
     }
