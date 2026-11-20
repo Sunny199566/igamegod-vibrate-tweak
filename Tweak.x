@@ -19,8 +19,8 @@ static void RefreshTimeBatteryLabel(void) {
 - (void)didMoveToSuperview {
     %orig;
     CGRect frm = self.frame;
-    // 精准匹配你截图的控件：width=50 height=20
-    if ((int)frm.size.width == 50 && (int)frm.size.height == 20 && !g_timeBatteryLabel) {
+    // 精准匹配：宽50，高20，坐标(-3,47)，和你截图完全一致
+    if ((int)frm.size.width == 50 && (int)frm.size.height == 20 && (int)frm.origin.x == -3 && (int)frm.origin.y == 47 && !g_timeBatteryLabel) {
         g_timeBatteryLabel = self;
         dispatch_async(dispatch_get_main_queue(), ^{
             if(g_refreshTimer) [g_refreshTimer invalidate];
@@ -33,7 +33,7 @@ static void RefreshTimeBatteryLabel(void) {
 }
 %end
 
-// ====== 原有悬浮球手势代码（长按0.25s版本）======
+// ====== 悬浮球长按0.25s逻辑（修复keyWindow废弃问题）======
 static void setTapGestureEnable(UIView *ballView, BOOL enable) {
     for(UIGestureRecognizer *ges in ballView.gestureRecognizers) {
         if([ges isKindOfClass:[UITapGestureRecognizer class]]) {
@@ -42,13 +42,22 @@ static void setTapGestureEnable(UIView *ballView, BOOL enable) {
     }
 }
 
+static UIViewController* GetRootVC(void) {
+    for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
+        if (scene.activationState == UISceneActivationStateForegroundActive) {
+            UIWindow *win = scene.windows.firstObject;
+            if(win.rootViewController) return win.rootViewController;
+        }
+    }
+    return nil;
+}
+
 %hook UIView
 %new
 - (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
     if(gesture.state != UIGestureRecognizerStateBegan) return;
     UIView *floatBall = gesture.view;
     if(floatBall.alpha > 0.5f) {
-        // 悬浮球可见，弹出菜单
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
         [alert addAction:[UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
             // 原生菜单逻辑，按需自行补充
@@ -58,10 +67,11 @@ static void setTapGestureEnable(UIView *ballView, BOOL enable) {
             setTapGestureEnable(floatBall, NO);
         }]];
         [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-        UIViewController *rootVC = [UIApplication sharedApplication].keyWindow.rootViewController;
-        [rootVC presentViewController:alert animated:YES completion:nil];
+        UIViewController *rootVC = GetRootVC();
+        if(rootVC) {
+            [rootVC presentViewController:alert animated:YES completion:nil];
+        }
     } else {
-        // 悬浮球隐藏，恢复显示
         floatBall.alpha = 1.0f;
         setTapGestureEnable(floatBall, YES);
     }
@@ -70,7 +80,7 @@ static void setTapGestureEnable(UIView *ballView, BOOL enable) {
 - (void)didMoveToSuperview {
     %orig;
     CGRect frm = self.frame;
-    // 悬浮球尺寸判断，根据你实际圆球大小，这里示例，可按需修改
+    // 这里替换成你的悬浮球真实宽高，你可以从视图调试工具查看圆球size修改
     if ((int)frm.size.width == 50 && (int)frm.size.height == 50) {
         BOOL hasLongPress = NO;
         for(UIGestureRecognizer *ges in self.gestureRecognizers) {
