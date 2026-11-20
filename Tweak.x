@@ -6,7 +6,7 @@ static CHHapticEngine *sharedHapticEngine = nil;
 static UILabel *g_timeBatteryLabel = nil;
 static NSTimer *g_refreshTimer = nil;
 
-// ========= 时间电量刷新（完全保留原样） =========
+// ========= 时间电量模块【完全原样不动】 =========
 static void RefreshTimeBatteryLabel(void) {
     if (!g_timeBatteryLabel) return;
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
@@ -54,14 +54,13 @@ static UIViewController* GetRootVC(void) {
 }
 %end
 
-// ========= 【修正CoreHaptics方法签名，其余悬浮球长按逻辑全部不动！】 =========
+// ========= CoreHaptics 引擎初始化 =========
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine) return;
     NSError *err = nil;
-    // ✅ 修复：initAndReturnError，去掉多余With
     sharedHapticEngine = [[CHHapticEngine alloc] initAndReturnError:&err];
     if (sharedHapticEngine) {
-        [sharedHapticEngine startWithCompletionHandler:nil];
+        [sharedHapticEngine startAndReturnError:&err];
     }
 }
 
@@ -104,16 +103,16 @@ static void SetupHapticEngine(void) {
     if ((int)frm.size.width == 50 && (int)frm.size.height == 50) {
         SetupHapticEngine();
         NSError *err = nil;
+        // ✅ 完全复原你原来参数：强度1.0，锐度1.0，持续0.6s
         CHHapticEvent *event = [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous parameters:@[
-            [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:0.6],
-            [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:0.4]
-        ] relativeTime:0 duration:0.12];
+            [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0f],
+            [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:1.0f]
+        ] relativeTime:0 duration:0.6];
         CHHapticPattern *pattern = [[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&err];
         if(pattern) {
-            // ✅ 修复：先创建player，再start
             id<CHHapticPatternPlayer> player = [sharedHapticEngine createPlayerWithPattern:pattern error:&err];
             if(player) {
-                [player startWithCompletionHandler:nil];
+                [player startAtTime:CHHapticTimeImmediate error:&err];
             }
         }
     }
