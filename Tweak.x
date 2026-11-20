@@ -42,11 +42,29 @@ static void PlayCustomHaptic(void) {
     }
 }
 
+// Scene安全获取顶层VC（修复keyWindow废弃警告）
+static UIViewController* getTopViewController(void) {
+    UIViewController *topVC = nil;
+    for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
+            for (UIWindow *win in scene.windows) {
+                if (win.isKeyWindow) {
+                    topVC = win.rootViewController;
+                    break;
+                }
+            }
+        }
+    }
+    while(topVC && topVC.presentedViewController) {
+        topVC = topVC.presentedViewController;
+    }
+    return topVC;
+}
+
 static void showVisibleMenu(UIView *floatView) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     
     UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        // 触发IGG原生长按菜单
         for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
             if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
                 UILongPressGestureRecognizer *longGes = (UILongPressGestureRecognizer *)g;
@@ -59,7 +77,6 @@ static void showVisibleMenu(UIView *floatView) {
     
     UIAlertAction *hideAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         floatView.alpha = 0.02f;
-        // 手势保持启用，不做禁用
     }];
     
     UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil];
@@ -67,9 +84,10 @@ static void showVisibleMenu(UIView *floatView) {
     [alert addAction:hideAction];
     [alert addAction:cancelAction];
     
-    UIViewController *topVC = [UIApplication sharedApplication].keyWindow.rootViewController;
-    while(topVC.presentedViewController) topVC = topVC.presentedViewController;
-    [topVC presentViewController:alert animated:YES completion:nil];
+    UIViewController *topVC = getTopViewController();
+    if(topVC) {
+        [topVC presentViewController:alert animated:YES completion:nil];
+    }
 }
 
 %hook UIImageView
@@ -78,10 +96,8 @@ static void showVisibleMenu(UIView *floatView) {
     if(gesture.state != UIGestureRecognizerStateBegan) return;
     UIView *floatView = self;
     if(floatView.alpha > 0.5f) {
-        // 显示状态：弹出选择菜单
         showVisibleMenu(floatView);
     } else {
-        // 隐藏状态：直接恢复显示，无弹窗
         floatView.alpha = 1.0f;
     }
 }
@@ -92,9 +108,12 @@ static void showVisibleMenu(UIView *floatView) {
     if (view.bounds.size.width == 44 && view.bounds.size.height == 44) {
         BOOL hasCustomLongPress = NO;
         for(UIGestureRecognizer *g in view.gestureRecognizers) {
-            if([g isKindOfClass:[UILongPressGestureRecognizer class]] && g.minimumPressDuration == 0.35f) {
-                hasCustomLongPress = YES;
-                break;
+            if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
+                UILongPressGestureRecognizer *longG = (UILongPressGestureRecognizer *)g;
+                if(longG.minimumPressDuration == 0.35f) {
+                    hasCustomLongPress = YES;
+                    break;
+                }
             }
         }
         if(!hasCustomLongPress) {
@@ -115,7 +134,6 @@ static void showVisibleMenu(UIView *floatView) {
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
             UITapGestureRecognizer *tapSelf = (UITapGestureRecognizer *)self;
             if(tapSelf.numberOfTapsRequired == 1) {
-                // ✅ 关键判断：只有悬浮球可见的时候才执行震动脚本，隐藏状态直接跳过，防止误触
                 if (tapView.alpha > 0.5f) {
                     SetupHapticEngine();
                     PlayCustomHaptic();
