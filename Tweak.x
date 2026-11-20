@@ -42,20 +42,11 @@ static void PlayCustomHaptic(void) {
     }
 }
 
-// 双击回调：切换显示隐藏
-static void HandleDoubleTap(UITapGestureRecognizer *gesture) {
-    UIView *targetView = gesture.view;
-    targetView.alpha = (targetView.alpha > 0.5f) ? 0.0f : 1.0f;
-    PlayCustomHaptic();
-}
-
 %hook UIImageView
 - (void)didMoveToWindow {
     %orig;
     UIView *view = self;
-    // 匹配目标悬浮图标 44*44
     if (view.bounds.size.width == 44 && view.bounds.size.height == 44) {
-        // 防止重复添加手势
         BOOL hasDoubleTap = NO;
         for (UIGestureRecognizer *ges in view.gestureRecognizers) {
             if ([ges isKindOfClass:[UITapGestureRecognizer class]] && ((UITapGestureRecognizer *)ges).numberOfTapsRequired == 2) {
@@ -64,9 +55,12 @@ static void HandleDoubleTap(UITapGestureRecognizer *gesture) {
             }
         }
         if (!hasDoubleTap) {
-            UITapGestureRecognizer *doubleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(HandleDoubleTap:)];
+            UITapGestureRecognizer *doubleTap = [[UITapGestureRecognizer alloc] initWithActionBlock:^(UITapGestureRecognizer * _Nonnull gesture) {
+                UIView *targetView = gesture.view;
+                targetView.alpha = (targetView.alpha > 0.5f) ? 0.0f : 1.0f;
+                PlayCustomHaptic();
+            }];
             doubleTap.numberOfTapsRequired = 2;
-            // 关键配置：不拦截原有触摸事件，iGameGod自带单击/长按完全正常工作
             doubleTap.cancelsTouchesInView = NO;
             [view addGestureRecognizer:doubleTap];
         }
@@ -81,7 +75,6 @@ static void HandleDoubleTap(UITapGestureRecognizer *gesture) {
         UIView *tapView = self.view;
         if (!tapView) return;
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
-            // 只有可见状态单击才震动+触发脚本，透明隐藏状态单击无效
             if (tapView.alpha > 0.5f) {
                 PlayCustomHaptic();
             }
