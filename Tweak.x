@@ -81,27 +81,22 @@ static void showVisibleMenu(UIView *floatView) {
     }
 }
 
-#pragma mark - 【重写：保活状态栏时间电量模块】持续扫描，防止消失
+#pragma mark - 【修复编译错误】递归block增加 __block
 static void StatusBarKeepLoop(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        //遍历所有window，查找状态栏时间Label
         for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
             if (![scene isKindOfClass:[UIWindowScene class]]) continue;
             for (UIWindow *win in scene.windows) {
-                //递归遍历子视图
-                void (^scanView)(UIView *) = ^(UIView *view) {
+                __block void (^scanView)(UIView *) = nil;
+                scanView = ^(UIView *view) {
                     if ([view isKindOfClass:[UILabel class]]) {
                         UILabel *label = (UILabel *)view;
                         CGRect frm = label.frame;
-                        //匹配原生时间Label坐标尺寸
                         if ((int)frm.size.width == 50 && (int)frm.size.height == 20 && (int)frm.origin.x == -3 && (int)frm.origin.y == 47) {
-                            //强制锁死原生时间隐藏，防止系统刷新自动显示
                             label.alpha = 0.0f;
                             
-                            //查找自定义Label
                             UILabel *customLabel = (UILabel *)[label.superview viewWithTag:kCustomTimeBatteryTag];
                             if (!customLabel) {
-                                //不存在就新建，加到同一个父视图
                                 CGRect newFrame = CGRectMake(frm.origin.x, frm.origin.y, 90, 20);
                                 customLabel = [[UILabel alloc] initWithFrame:newFrame];
                                 customLabel.tag = kCustomTimeBatteryTag;
@@ -111,7 +106,6 @@ static void StatusBarKeepLoop(void) {
                                 customLabel.backgroundColor = [UIColor clearColor];
                                 [label.superview addSubview:customLabel];
                             }
-                            //刷新文字
                             NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
                             fmt.dateFormat = @"HH:mm";
                             NSString *timeStr = [fmt stringFromDate:[NSDate date]];
@@ -205,7 +199,6 @@ static void StatusBarKeepLoop(void) {
 %ctor {
     dispatch_async(dispatch_get_main_queue(), ^{
         SetupHapticEngine();
-        //每0.5秒执行一次保活扫描，轻量不耗电，持续锁定状态栏
         statusBarKeepTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer * _Nonnull timer) {
             StatusBarKeepLoop();
         }];
