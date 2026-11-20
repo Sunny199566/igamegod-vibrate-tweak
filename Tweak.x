@@ -46,8 +46,9 @@ static void PlayCustomHaptic(void) {
 %hook UIImageView
 %new
 - (void)igod_doubleTapToggle:(UITapGestureRecognizer *)gesture {
+    // ✅ 【核心修复】一进入双击回调立刻上锁，窗口期拉长，覆盖单击识别时序
     isDoubleTapTriggered = YES;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         isDoubleTapTriggered = NO;
     });
 
@@ -106,6 +107,7 @@ static void PlayCustomHaptic(void) {
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
     if(state == UIGestureRecognizerStateRecognized) {
+        // ✅ 只要处于双击屏蔽窗口期，直接return，完全不执行脚本
         if(isDoubleTapTriggered) return;
 
         UIView *tapView = self.view;
