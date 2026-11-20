@@ -42,7 +42,6 @@ static void PlayCustomHaptic(void) {
     }
 }
 
-// Scene安全获取顶层VC（修复keyWindow废弃警告）
 static UIViewController* getTopViewController(void) {
     UIViewController *topVC = nil;
     for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
@@ -76,7 +75,8 @@ static void showVisibleMenu(UIView *floatView) {
     }];
     
     UIAlertAction *hideAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        floatView.alpha = 0.02f;
+        // ✅ 使用 isHidden，视图不再接收任何触摸事件，单击脚本彻底不会触发
+        floatView.hidden = YES;
     }];
     
     UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil];
@@ -95,10 +95,12 @@ static void showVisibleMenu(UIView *floatView) {
 - (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
     if(gesture.state != UIGestureRecognizerStateBegan) return;
     UIView *floatView = self;
-    if(floatView.alpha > 0.5f) {
+    if(floatView.isHidden == NO) {
+        // ✅ 显示状态，弹出选择菜单
         showVisibleMenu(floatView);
     } else {
-        floatView.alpha = 1.0f;
+        // ✅ 隐藏状态：长按直接恢复显示
+        floatView.hidden = NO;
     }
 }
 
@@ -134,7 +136,8 @@ static void showVisibleMenu(UIView *floatView) {
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
             UITapGestureRecognizer *tapSelf = (UITapGestureRecognizer *)self;
             if(tapSelf.numberOfTapsRequired == 1) {
-                if (tapView.alpha > 0.5f) {
+                // ✅ 双重保险：只有视图没有被 hidden 的时候，才执行震动脚本
+                if (!tapView.isHidden) {
                     SetupHapticEngine();
                     PlayCustomHaptic();
                 }
