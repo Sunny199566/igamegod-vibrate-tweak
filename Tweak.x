@@ -5,9 +5,22 @@
 static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
 
+static UIView* GetKeyWindow(void) {
+    for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
+        if (scene.activationState == UISceneActivationStateForegroundActive) {
+            for (UIWindow *win in scene.windows) {
+                if (win.isKeyWindow) return win;
+            }
+        }
+    }
+    return nil;
+}
+
 // ========= 时间电量刷新 =========
 static void RefreshTimeBatteryLabel(void) {
-    UILabel *customLabel = (UILabel *)[[UIApplication sharedApplication].keyWindow viewWithTag:kCustomTimeBatteryTag];
+    UIWindow *keyWin = (UIWindow *)GetKeyWindow();
+    if(!keyWin) return;
+    UILabel *customLabel = (UILabel *)[keyWin viewWithTag:kCustomTimeBatteryTag];
     if (!customLabel) return;
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
     fmt.dateFormat = @"HH:mm";
@@ -19,12 +32,8 @@ static void RefreshTimeBatteryLabel(void) {
 }
 
 static UIViewController* GetRootVC(void) {
-    for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
-        if (scene.activationState == UISceneActivationStateForegroundActive) {
-            UIWindow *win = scene.windows.firstObject;
-            if(win.rootViewController) return win.rootViewController;
-        }
-    }
+    UIWindow *keyWin = (UIWindow *)GetKeyWindow();
+    if(keyWin) return keyWin.rootViewController;
     return nil;
 }
 
