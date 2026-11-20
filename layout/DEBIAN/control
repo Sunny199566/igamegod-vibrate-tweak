@@ -1,0 +1,8 @@
+Package: com.globalgesture.gesturetool
+Name: GlobalGestureTool
+Version: 1.0
+Architecture: arm64e
+Section: Tweaks
+Maintainer: YourName <you@email.com>
+Description: Global gesture record and playback tool
+Depends: mobilesubstrate

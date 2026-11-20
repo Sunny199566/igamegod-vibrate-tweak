@@ -1,0 +1,72 @@
+name: Build GlobalGestureTool Rootless arm64e
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout Theos
+        uses: actions/checkout@v4
+        with:
+          repository: theos/theos
+          ref: master
+          submodules: recursive
+          path: theos
+
+      - name: Checkout SDK 16.5
+        uses: actions/checkout@v4
+        with:
+          repository: theos/sdks
+          sparse-checkout: iPhoneOS16.5.sdk
+          path: theos/sdks
+
+      - name: Install dependencies
+        run: |
+          brew install ldid dpkg make zip
+
+      - name: Setup Theos env
+        run: |
+          echo "THEOS=$GITHUB_WORKSPACE/theos" >> $GITHUB_ENV
+
+      # ========== 编译deb（RecordTweak + PlayDaemon） ==========
+      - name: Build deb package (Tweak & Daemon)
+        run: |
+          make clean
+          make package FINALPACKAGE=1
+
+      # ========== GestureManager IPA构建【最终修复版】 ==========
+      - name: Build GestureManager binary & manually construct IPA
+        run: |
+          export THEOS=$GITHUB_WORKSPACE/theos
+          cd GestureManager
+          make clean
+          make all
+          # ✅ -type f 并且排除dSYM调试文件夹，只取真正的可执行文件，取第一条结果
+          BIN_PATH=$(find .theos/obj -name "GestureManager" -type f ! -path "*dSYM*" | head -n 1)
+          echo "Binary path: $BIN_PATH"
+          rm -rf Payload
+          mkdir -p Payload/GestureManager.app
+          # 复制二进制
+          cp "$BIN_PATH" Payload/GestureManager.app/GestureManager
+          # 复制Info.plist
+          cp Info.plist Payload/GestureManager.app/
+          # ldid签名
+          ldid -s Payload/GestureManager.app/GestureManager
+          # 打包ipa
+          zip -r GestureManager.ipa Payload
+          cp GestureManager.ipa $GITHUB_WORKSPACE/
+
+      # ========== 上传产物 deb + ipa ==========
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: GlobalGestureTool-Build
+          path: |
+            ./packages/*.deb
+            ./*.ipa
+          retention-days: 30
