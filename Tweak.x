@@ -3,7 +3,7 @@
 
 static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
-static NSTimer *statusBarKeepTimer = nil;
+static NSTimer *floatLabelRefreshTimer = nil;
 
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine != nil) return;
@@ -68,6 +68,8 @@ static void showVisibleMenu(UIView *floatView) {
     UIAlertAction *hideAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         floatView.alpha = 0.02f;
         setTapGestureEnable(floatView, NO);
+        UILabel *lab = (UILabel *)[floatView.superview viewWithTag:kCustomTimeBatteryTag];
+        if(lab) lab.hidden = YES;
     }];
     
     UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil];
@@ -81,37 +83,20 @@ static void showVisibleMenu(UIView *floatView) {
     }
 }
 
-#pragma mark - 【修复编译错误】递归block增加 __block
-static void StatusBarKeepLoop(void) {
+#pragma mark - ✅ 挂载到悬浮球父视图，悬浮球正下方（和截图位置一致）
+static void RefreshFloatLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
+        // 遍历找到44x44悬浮球UIImageView
+        UIView *floatBall = nil;
         for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
             if (![scene isKindOfClass:[UIWindowScene class]]) continue;
             for (UIWindow *win in scene.windows) {
                 __block void (^scanView)(UIView *) = nil;
                 scanView = ^(UIView *view) {
-                    if ([view isKindOfClass:[UILabel class]]) {
-                        UILabel *label = (UILabel *)view;
-                        CGRect frm = label.frame;
-                        if ((int)frm.size.width == 50 && (int)frm.size.height == 20 && (int)frm.origin.x == -3 && (int)frm.origin.y == 47) {
-                            label.alpha = 0.0f;
-                            
-                            UILabel *customLabel = (UILabel *)[label.superview viewWithTag:kCustomTimeBatteryTag];
-                            if (!customLabel) {
-                                CGRect newFrame = CGRectMake(frm.origin.x, frm.origin.y, 90, 20);
-                                customLabel = [[UILabel alloc] initWithFrame:newFrame];
-                                customLabel.tag = kCustomTimeBatteryTag;
-                                customLabel.font = label.font;
-                                customLabel.textColor = label.textColor;
-                                customLabel.textAlignment = NSTextAlignmentRight;
-                                customLabel.backgroundColor = [UIColor clearColor];
-                                [label.superview addSubview:customLabel];
-                            }
-                            NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
-                            fmt.dateFormat = @"HH:mm";
-                            NSString *timeStr = [fmt stringFromDate:[NSDate date]];
-                            [UIDevice currentDevice].batteryMonitoringEnabled = YES;
-                            NSInteger bat = roundf([UIDevice currentDevice].batteryLevel * 100);
-                            customLabel.text = [NSString stringWithFormat:@"%@ • %ld%%", timeStr, bat];
+                    if ([view isKindOfClass:[UIImageView class]]) {
+                        if ((int)view.bounds.size.width == 44 && (int)view.bounds.size.height ==44) {
+                            floatBall = view;
+                            return;
                         }
                     }
                     for(UIView *sub in view.subviews) {
@@ -119,8 +104,37 @@ static void StatusBarKeepLoop(void) {
                     }
                 };
                 scanView(win);
+                if(floatBall) break;
             }
+            if(floatBall) break;
         }
+        if(!floatBall) return;
+        UIView *parentView = floatBall.superview;
+        UILabel *customLabel = (UILabel *)[parentView viewWithTag:kCustomTimeBatteryTag];
+        if (!customLabel) {
+            // 位置：悬浮球正下方，向下偏移20px，居中对齐
+            CGRect ballFrame = floatBall.frame;
+            CGRect labelFrame = CGRectMake(ballFrame.origin.x - 23, ballFrame.origin.y + ballFrame.size.height + 8, 90, 22);
+            customLabel = [[UILabel alloc] initWithFrame:labelFrame];
+            customLabel.tag = kCustomTimeBatteryTag;
+            customLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightMedium];
+            customLabel.textColor = [UIColor whiteColor];
+            customLabel.textAlignment = NSTextAlignmentCenter;
+            customLabel.backgroundColor = [UIColor clearColor];
+            [parentView addSubview:customLabel];
+        }
+        // 跟随悬浮球坐标实时更新位置（拖动悬浮球文字自动跟着走）
+        CGRect ballFrame = floatBall.frame;
+        customLabel.frame = CGRectMake(ballFrame.origin.x - 23, ballFrame.origin.y + ballFrame.size.height + 8, 90, 22);
+        customLabel.hidden = (floatBall.alpha < 0.1f);
+        
+        // 文字：HH:mm • 电量%，无秒数
+        NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+        fmt.dateFormat = @"HH:mm";
+        NSString *timeStr = [fmt stringFromDate:[NSDate date]];
+        [UIDevice currentDevice].batteryMonitoringEnabled = YES;
+        NSInteger bat = roundf([UIDevice currentDevice].batteryLevel * 100);
+        customLabel.text = [NSString stringWithFormat:@"%@ • %ld%%", timeStr, bat];
     });
 }
 
@@ -135,6 +149,8 @@ static void StatusBarKeepLoop(void) {
     } else {
         floatView.alpha = 1.0f;
         setTapGestureEnable(floatView, YES);
+        UILabel *lab = (UILabel *)[floatView.superview viewWithTag:kCustomTimeBatteryTag];
+        if(lab) lab.hidden = NO;
     }
 }
 
@@ -199,8 +215,9 @@ static void StatusBarKeepLoop(void) {
 %ctor {
     dispatch_async(dispatch_get_main_queue(), ^{
         SetupHapticEngine();
-        statusBarKeepTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer * _Nonnull timer) {
-            StatusBarKeepLoop();
+        // 0.5s刷新：更新时间电量 + 跟随悬浮球位置
+        floatLabelRefreshTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer * _Nonnull timer) {
+            RefreshFloatLabel();
         }];
     });
 }
