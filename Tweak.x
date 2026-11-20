@@ -100,7 +100,7 @@ static void showVisibleMenu(UIView *floatView) {
         for(UIGestureRecognizer *g in view.gestureRecognizers) {
             if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
                 UILongPressGestureRecognizer *longG = (UILongPressGestureRecognizer *)g;
-                if(longG.minimumPressDuration == 0.35f) {
+                if(longG.minimumPressDuration == 0.25f) {
                     hasCustomLongPress = YES;
                     break;
                 }
@@ -108,7 +108,7 @@ static void showVisibleMenu(UIView *floatView) {
         }
         if(!hasCustomLongPress) {
             UILongPressGestureRecognizer *longTap = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(tweakLongPressAction:)];
-            longTap.minimumPressDuration = 0.35f;
+            longTap.minimumPressDuration = 0.25f;
             [view addGestureRecognizer:longTap];
         }
     }
