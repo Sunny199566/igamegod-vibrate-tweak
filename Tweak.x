@@ -46,10 +46,26 @@ static void PlayCustomHaptic(void) {
 %new
 - (void)igod_doubleTapToggle:(UITapGestureRecognizer *)gesture {
     UIView *targetView = gesture.view;
+    UITapGestureRecognizer *singleTap = nil;
+    // 查找原生单击手势
+    for(UIGestureRecognizer *g in targetView.gestureRecognizers) {
+        if([g isKindOfClass:[UITapGestureRecognizer class]]) {
+            UITapGestureRecognizer *tap = (UITapGestureRecognizer *)g;
+            if(tap.numberOfTapsRequired == 1) {
+                singleTap = tap;
+                break;
+            }
+        }
+    }
+
     if(targetView.alpha > 0.5f) {
+        // 隐藏：alpha=0.02，并且【禁用原生单击手势】！源头关闭脚本触发
         targetView.alpha = 0.02f;
+        if(singleTap) singleTap.enabled = NO;
     } else {
+        // 显示：alpha=1.0，开启原生单击手势，恢复正常功能
         targetView.alpha = 1.0f;
+        if(singleTap) singleTap.enabled = YES;
     }
     PlayCustomHaptic();
 }
@@ -94,7 +110,6 @@ static void PlayCustomHaptic(void) {
         if (!tapView) return;
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
             UITapGestureRecognizer *tapSelf = (UITapGestureRecognizer *)self;
-            // ==========核心判断：单击手势 + 小球可见alpha>0.5，才执行脚本震动！隐藏状态直接跳过==========
             if(tapSelf.numberOfTapsRequired == 1 && tapView.alpha > 0.5f) {
                 SetupHapticEngine();
                 PlayCustomHaptic();
