@@ -1,0 +1,9 @@
+Package: com.yourname.igamegodvibrate
+Name: iGameGodVibrate
+Version: 1.0.0
+Architecture: iphoneos-arm64e
+Description: Add vibration feedback for iGameGod floating button
+Maintainer: YourName
+Author: YourName
+Section: Tweaks
+Depends: mobilesubstrate
