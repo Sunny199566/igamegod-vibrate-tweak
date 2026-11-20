@@ -1,8 +1,22 @@
 #import <UIKit/UIKit.h>
 #import <CoreHaptics/CoreHaptics.h>
+#import <objc/runtime.h>
 
 static CHHapticEngine *sharedHapticEngine = nil;
-static void (^g_doubleTapBlock)(UITapGestureRecognizer *gesture);
+static const void *kDoubleTapTargetKey = &kDoubleTapTargetKey;
+
+@interface DoubleTapTarget : NSObject
+- (void)onDoubleTap:(UITapGestureRecognizer *)gesture;
+@end
+
+@implementation DoubleTapTarget
+- (void)onDoubleTap:(UITapGestureRecognizer *)gesture {
+    UIView *targetView = gesture.view;
+    targetView.alpha = (targetView.alpha > 0.5f) ? 0.0f : 1.0f;
+    extern void PlayCustomHaptic(void);
+    PlayCustomHaptic();
+}
+@end
 
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine != nil) return;
@@ -20,7 +34,7 @@ static void SetupHapticEngine(void) {
     }
 }
 
-static void PlayCustomHaptic(void) {
+void PlayCustomHaptic(void) {
     if (@available(iOS 13.0, *)) {
         if (!sharedHapticEngine) {
             UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
@@ -43,12 +57,6 @@ static void PlayCustomHaptic(void) {
     }
 }
 
-static void DoubleTapHandler(UITapGestureRecognizer *gesture) {
-    if(g_doubleTapBlock) {
-        g_doubleTapBlock(gesture);
-    }
-}
-
 %hook UIImageView
 - (void)didMoveToWindow {
     %orig;
@@ -62,13 +70,9 @@ static void DoubleTapHandler(UITapGestureRecognizer *gesture) {
             }
         }
         if (!hasDoubleTap) {
-            g_doubleTapBlock = [^(UITapGestureRecognizer *gesture) {
-                UIView *targetView = gesture.view;
-                targetView.alpha = (targetView.alpha > 0.5f) ? 0.0f : 1.0f;
-                PlayCustomHaptic();
-            } copy];
-
-            UITapGestureRecognizer *doubleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(DoubleTapHandler:)];
+            DoubleTapTarget *target = [[DoubleTapTarget alloc] init];
+            objc_setAssociatedObject(view, kDoubleTapTargetKey, target, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            UITapGestureRecognizer *doubleTap = [[UITapGestureRecognizer alloc] initWithTarget:target action:@selector(onDoubleTap:)];
             doubleTap.numberOfTapsRequired = 2;
             doubleTap.cancelsTouchesInView = NO;
             [view addGestureRecognizer:doubleTap];
