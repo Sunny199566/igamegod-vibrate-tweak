@@ -47,25 +47,30 @@ static void PlayCustomHaptic(void) {
 - (void)igod_doubleTapToggle:(UITapGestureRecognizer *)gesture {
     UIView *targetView = gesture.view;
     UITapGestureRecognizer *singleTap = nil;
-    // 查找原生单击手势
+    UILongPressGestureRecognizer *longPressTap = nil;
+
+    // 遍历查找：单击、长按手势
     for(UIGestureRecognizer *g in targetView.gestureRecognizers) {
         if([g isKindOfClass:[UITapGestureRecognizer class]]) {
             UITapGestureRecognizer *tap = (UITapGestureRecognizer *)g;
             if(tap.numberOfTapsRequired == 1) {
                 singleTap = tap;
-                break;
             }
+        }else if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
+            longPressTap = (UILongPressGestureRecognizer *)g;
         }
     }
 
     if(targetView.alpha > 0.5f) {
-        // 隐藏：alpha=0.02，并且【禁用原生单击手势】！源头关闭脚本触发
+        // ✅ 隐藏：禁用单击 + 长按；拖拽手势不受影响，可以拖动
         targetView.alpha = 0.02f;
         if(singleTap) singleTap.enabled = NO;
+        if(longPressTap) longPressTap.enabled = NO;
     } else {
-        // 显示：alpha=1.0，开启原生单击手势，恢复正常功能
+        // ✅ 显示：恢复单击 + 长按，IGG全部原生功能恢复
         targetView.alpha = 1.0f;
         if(singleTap) singleTap.enabled = YES;
+        if(longPressTap) longPressTap.enabled = YES;
     }
     PlayCustomHaptic();
 }
