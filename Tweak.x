@@ -42,12 +42,17 @@ static void PlayCustomHaptic(void) {
     }
 }
 
-// ========== 新增双击显隐部分，%new 方式，和你原有代码融合 ==========
+// ========== 新增双击显隐部分 ==========
 %hook UIImageView
 %new
 - (void)igod_doubleTapToggle:(UITapGestureRecognizer *)gesture {
     UIView *targetView = gesture.view;
-    targetView.alpha = (targetView.alpha > 0.5f) ? 0.0f : 1.0f;
+    // ========== 这里是修复点：0.01 代替 0，保留触摸能力 ==========
+    if (targetView.alpha > 0.5f) {
+        targetView.alpha = 0.01f;
+    } else {
+        targetView.alpha = 1.0f;
+    }
     PlayCustomHaptic();
 }
 
@@ -72,7 +77,6 @@ static void PlayCustomHaptic(void) {
 }
 %end
 
-// ✅ 你原来已经跑通的单击Hook，仅增加alpha判断：透明状态单击不再触发震动
 %hook UITapGestureRecognizer
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
@@ -80,7 +84,7 @@ static void PlayCustomHaptic(void) {
         UIView *tapView = self.view;
         if (!tapView) return;
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
-            // 只有小球可见的时候才触发震动
+            // alpha>0.5才触发单击震动，0.01状态不会误触发
             if(tapView.alpha > 0.5f) {
                 SetupHapticEngine();
                 PlayCustomHaptic();
