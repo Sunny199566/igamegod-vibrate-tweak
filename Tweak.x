@@ -29,7 +29,7 @@ static void PlayCustomHaptic(void) {
         }
         NSError *error = nil;
         CHHapticEventParameter *intensityParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0];
-        CHHapticEventParameter *sharpnessParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:0.2];
+        CHHapticEventParameter *sharpnessParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:1.0];
         CHHapticEvent *event = [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous parameters:@[intensityParam, sharpnessParam] relativeTime:0 duration:0.6];
         CHHapticPattern *pattern = [[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&error];
         if (!error) {
@@ -48,7 +48,6 @@ static void PlayCustomHaptic(void) {
     if(state == UIGestureRecognizerStateRecognized) {
         UIView *tapView = self.view;
         if (!tapView) return;
-        // ✅ 判断：UIImageView，并且bounds宽高等于44
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
             SetupHapticEngine();
             PlayCustomHaptic();
