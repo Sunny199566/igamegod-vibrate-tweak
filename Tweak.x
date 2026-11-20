@@ -42,83 +42,65 @@ static void PlayCustomHaptic(void) {
     }
 }
 
-@interface DoubleTapDelegate : NSObject <UIGestureRecognizerDelegate>
-@property (nonatomic, assign) UITapGestureRecognizer *singleTapGesture;
-@end
-
-@implementation DoubleTapDelegate
-- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
-    if (!self.singleTapGesture) return NO;
-    if ([otherGestureRecognizer isKindOfClass:[UITapGestureRecognizer class]]
-        && ((UITapGestureRecognizer *)otherGestureRecognizer).numberOfTapsRequired == 2
-        && gestureRecognizer == self.singleTapGesture) {
-        return YES;
-    }
-    return NO;
+static void showVisibleMenu(UIView *floatView) {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    
+    UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        // 触发IGG原生长按菜单
+        for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
+            if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
+                UILongPressGestureRecognizer *longGes = (UILongPressGestureRecognizer *)g;
+                longGes.state = UIGestureRecognizerStateBegan;
+                longGes.state = UIGestureRecognizerStateRecognized;
+                break;
+            }
+        }
+    }];
+    
+    UIAlertAction *hideAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        floatView.alpha = 0.02f;
+        // 手势保持启用，不做禁用
+    }];
+    
+    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil];
+    [alert addAction:nativeMenuAction];
+    [alert addAction:hideAction];
+    [alert addAction:cancelAction];
+    
+    UIViewController *topVC = [UIApplication sharedApplication].keyWindow.rootViewController;
+    while(topVC.presentedViewController) topVC = topVC.presentedViewController;
+    [topVC presentViewController:alert animated:YES completion:nil];
 }
-@end
-
-static DoubleTapDelegate *globalTapDelegate = nil;
 
 %hook UIImageView
 %new
-- (void)igod_doubleTapToggle:(UITapGestureRecognizer *)gesture {
-    UIView *targetView = gesture.view;
-    UITapGestureRecognizer *singleTap = nil;
-    UILongPressGestureRecognizer *longPressTap = nil;
-
-    for(UIGestureRecognizer *g in targetView.gestureRecognizers) {
-        if([g isKindOfClass:[UITapGestureRecognizer class]]) {
-            UITapGestureRecognizer *tap = (UITapGestureRecognizer *)g;
-            if(tap.numberOfTapsRequired == 1) {
-                singleTap = tap;
-            }
-        }else if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
-            longPressTap = (UILongPressGestureRecognizer *)g;
-        }
-    }
-
-    if(targetView.alpha > 0.5f) {
-        targetView.alpha = 0.02f;
-        if(singleTap) singleTap.enabled = NO;
-        if(longPressTap) longPressTap.enabled = NO;
+- (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
+    if(gesture.state != UIGestureRecognizerStateBegan) return;
+    UIView *floatView = self;
+    if(floatView.alpha > 0.5f) {
+        // 显示状态：弹出选择菜单
+        showVisibleMenu(floatView);
     } else {
-        targetView.alpha = 1.0f;
-        if(singleTap) singleTap.enabled = YES;
-        if(longPressTap) longPressTap.enabled = YES;
+        // 隐藏状态：直接恢复显示，无弹窗
+        floatView.alpha = 1.0f;
     }
-    PlayCustomHaptic();
 }
 
 - (void)didMoveToWindow {
     %orig;
     UIView *view = self;
     if (view.bounds.size.width == 44 && view.bounds.size.height == 44) {
-        UITapGestureRecognizer *existDoubleTap = nil;
-        UITapGestureRecognizer *singleTap = nil;
+        BOOL hasCustomLongPress = NO;
         for(UIGestureRecognizer *g in view.gestureRecognizers) {
-            if([g isKindOfClass:[UITapGestureRecognizer class]]) {
-                UITapGestureRecognizer *tap = (UITapGestureRecognizer *)g;
-                if(tap.numberOfTapsRequired == 2) {
-                    existDoubleTap = tap;
-                } else if(tap.numberOfTapsRequired == 1) {
-                    singleTap = tap;
-                }
+            if([g isKindOfClass:[UILongPressGestureRecognizer class]] && g.minimumPressDuration == 0.35f) {
+                hasCustomLongPress = YES;
+                break;
             }
         }
-        if(!existDoubleTap) {
-            UITapGestureRecognizer *dtap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(igod_doubleTapToggle:)];
-            dtap.numberOfTapsRequired = 2;
-            dtap.cancelsTouchesInView = NO;
-            [view addGestureRecognizer:dtap];
-
-            if(singleTap) {
-                if (!globalTapDelegate) {
-                    globalTapDelegate = [[DoubleTapDelegate alloc] init];
-                }
-                globalTapDelegate.singleTapGesture = singleTap;
-                singleTap.delegate = globalTapDelegate;
-            }
+        if(!hasCustomLongPress) {
+            UILongPressGestureRecognizer *longTap = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(tweakLongPressAction:)];
+            longTap.minimumPressDuration = 0.35f;
+            [view addGestureRecognizer:longTap];
         }
     }
 }
@@ -132,9 +114,12 @@ static DoubleTapDelegate *globalTapDelegate = nil;
         if (!tapView) return;
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
             UITapGestureRecognizer *tapSelf = (UITapGestureRecognizer *)self;
-            if(tapSelf.numberOfTapsRequired == 1 && tapView.alpha > 0.5f) {
-                SetupHapticEngine();
-                PlayCustomHaptic();
+            if(tapSelf.numberOfTapsRequired == 1) {
+                // ✅ 关键判断：只有悬浮球可见的时候才执行震动脚本，隐藏状态直接跳过，防止误触
+                if (tapView.alpha > 0.5f) {
+                    SetupHapticEngine();
+                    PlayCustomHaptic();
+                }
             }
         }
     }
