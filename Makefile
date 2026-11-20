@@ -4,7 +4,7 @@ THEOS_PACKAGE_SCHEME = rootless
 
 include $(THEOS)/makefiles/common.mk
 
-# ========== 这三行就是你缺失的核心部分 ==========
 TWEAK_NAME = iGameGodVibrate
-iGameGodVibrate_FILES = Tweak.x
+# ✅ 修改这里！把 Tweak.x → iGameGodVibrate.xm
+iGameGodVibrate_FILES = iGameGodVibrate.xm
 include $(THEOS_MAKE_PATH)/tweak.mk
