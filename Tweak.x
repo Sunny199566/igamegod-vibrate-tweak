@@ -46,6 +46,11 @@ static void PlayCustomHaptic(void) {
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
     if(state == UIGestureRecognizerStateRecognized) {
+        // 过滤：拖拽Pan、长按LongPress，只放行点击Tap
+        if ([self isKindOfClass:objc_getClass("UIPanGestureRecognizer")] ||
+            [self isKindOfClass:objc_getClass("UILongPressGestureRecognizer")]) {
+            return;
+        }
         UIView *targetView = self.view;
         if(!targetView) return;
         UIWindow *win = targetView.window;
