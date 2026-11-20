@@ -83,11 +83,11 @@ static void showVisibleMenu(UIView *floatView) {
     }
 }
 
-#pragma mark - ✅ 挂载到悬浮球父视图，悬浮球正下方（和截图位置一致）
+#pragma mark - ✅ 挂载到悬浮球父视图，悬浮球正下方
 static void RefreshFloatLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        // 遍历找到44x44悬浮球UIImageView
-        UIView *floatBall = nil;
+        // ✅ 修复：增加 __block
+        __block UIView *floatBall = nil;
         for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
             if (![scene isKindOfClass:[UIWindowScene class]]) continue;
             for (UIWindow *win in scene.windows) {
@@ -112,7 +112,7 @@ static void RefreshFloatLabel(void) {
         UIView *parentView = floatBall.superview;
         UILabel *customLabel = (UILabel *)[parentView viewWithTag:kCustomTimeBatteryTag];
         if (!customLabel) {
-            // 位置：悬浮球正下方，向下偏移20px，居中对齐
+            // 位置：悬浮球正下方，向下偏移8px，居中对齐
             CGRect ballFrame = floatBall.frame;
             CGRect labelFrame = CGRectMake(ballFrame.origin.x - 23, ballFrame.origin.y + ballFrame.size.height + 8, 90, 22);
             customLabel = [[UILabel alloc] initWithFrame:labelFrame];
@@ -138,7 +138,7 @@ static void RefreshFloatLabel(void) {
     });
 }
 
-#pragma mark - 悬浮球【完全原样保留，一行不动】
+#pragma mark - 悬浮球逻辑
 %hook UIImageView
 %new
 - (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
@@ -215,7 +215,6 @@ static void RefreshFloatLabel(void) {
 %ctor {
     dispatch_async(dispatch_get_main_queue(), ^{
         SetupHapticEngine();
-        // 0.5s刷新：更新时间电量 + 跟随悬浮球位置
         floatLabelRefreshTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer * _Nonnull timer) {
             RefreshFloatLabel();
         }];
