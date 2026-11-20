@@ -3,7 +3,6 @@
 
 static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
-static const NSInteger kOriginTimeLabelTag = 998878;
 static NSTimer *floatLabelRefreshTimer = nil;
 
 static void SetupHapticEngine(void) {
@@ -84,26 +83,27 @@ static void showVisibleMenu(UIView *floatView) {
     }
 }
 
-#pragma mark - 扫描并隐藏原生计时Label + 更新我们自定义Label
+#pragma mark - 每次刷新都强制隐藏iGameGod原生计时Label
 static void RefreshFloatLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         __block UIView *floatBall = nil;
-        __block UILabel *originTimeLabel = nil;
         for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
             if (![scene isKindOfClass:[UIWindowScene class]]) continue;
             for (UIWindow *win in scene.windows) {
                 __block void (^scanView)(UIView *) = nil;
                 scanView = ^(UIView *view) {
+                    // 找到悬浮球
                     if ([view isKindOfClass:[UIImageView class]]) {
                         if ((int)view.bounds.size.width == 44 && (int)view.bounds.size.height ==44) {
                             floatBall = view;
                         }
                     }
-                    // 识别原生计时Label（白色大字体，数字冒号格式）
+                    // ✅ 重点：每次扫描，只要发现带 ":" 的白色大号Label（iGameGod计时）立刻隐藏
                     if ([view isKindOfClass:[UILabel class]]) {
                         UILabel *lb = (UILabel *)view;
-                        if(lb.textColor == [UIColor whiteColor] && lb.font.pointSize >= 28 && [lb.text containsString:@":"]){
-                            originTimeLabel = lb;
+                        if(lb.textColor == [UIColor whiteColor] && [lb.text containsString:@":"]){
+                            lb.hidden = YES;
+                            lb.userInteractionEnabled = NO;
                         }
                     }
                     for(UIView *sub in view.subviews) {
@@ -111,14 +111,9 @@ static void RefreshFloatLabel(void) {
                     }
                 };
                 scanView(win);
-                if(floatBall && originTimeLabel) break;
+                if(floatBall) break;
             }
-            if(floatBall && originTimeLabel) break;
-        }
-        // 隐藏原生时间文字，解决重叠
-        if(originTimeLabel){
-            originTimeLabel.tag = kOriginTimeLabelTag;
-            originTimeLabel.hidden = YES;
+            if(floatBall) break;
         }
         if(!floatBall) return;
         UIView *parentView = floatBall.superview;
@@ -132,6 +127,8 @@ static void RefreshFloatLabel(void) {
             customLabel.textColor = [UIColor whiteColor];
             customLabel.textAlignment = NSTextAlignmentCenter;
             customLabel.backgroundColor = [UIColor clearColor];
+            customLabel.zPosition = 999;
+            customLabel.userInteractionEnabled = NO;
             [parentView addSubview:customLabel];
         }
         // 跟随悬浮球坐标更新位置
@@ -226,6 +223,11 @@ static void RefreshFloatLabel(void) {
 %ctor {
     dispatch_async(dispatch_get_main_queue(), ^{
         SetupHapticEngine();
+        // 先销毁旧定时器，防止多定时器同时运行（非常关键！）
+        if(floatLabelRefreshTimer && floatLabelRefreshTimer.isValid){
+            [floatLabelRefreshTimer invalidate];
+            floatLabelRefreshTimer = nil;
+        }
         floatLabelRefreshTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer * _Nonnull timer) {
             RefreshFloatLabel();
         }];
