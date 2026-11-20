@@ -1,12 +1,18 @@
 #import <UIKit/UIKit.h>
 #import <AudioToolbox/AudioToolbox.h>
 
-%hook UIView
-- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
+%hook UIGestureRecognizer
+- (void)setState:(UIGestureRecognizerState)state {
     %orig;
-    UIWindow *win = self.window;
-    if ([NSStringFromClass([win class]) isEqualToString:@"iGameGod.GameGodWindow"]) {
-        AudioServicesPlaySystemSound(1519);
+    // 手势识别成功（结束）
+    if(state == UIGestureRecognizerStateRecognized) {
+        UIView *targetView = self.view;
+        if(targetView) {
+            UIWindow *win = targetView.window;
+            if ([NSStringFromClass([win class]) isEqualToString:@"iGameGod.GameGodWindow"]) {
+                AudioServicesPlaySystemSound(1519);
+            }
+        }
     }
 }
 %end
