@@ -46,19 +46,18 @@ static void PlayCustomHaptic(void) {
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
     if(state == UIGestureRecognizerStateRecognized) {
-        // 过滤拖拽、长按手势，只保留点击Tap
+        // 过滤拖拽、长按手势
         if ([self isKindOfClass:objc_getClass("UIPanGestureRecognizer")] ||
             [self isKindOfClass:objc_getClass("UILongPressGestureRecognizer")]) {
             return;
         }
-        
         UIView *targetView = self.view;
         if(!targetView) return;
         UIWindow *win = targetView.window;
         if (!win) return;
         
-        // ✅ iGameGod窗口过滤：判断窗口类名（IGFloatWindow）
-        if (![NSStringFromClass([win class]) isEqualToString:@"IGFloatWindow"]) {
+        // ✅ 使用FLEX抓到的真实窗口类名 iGameGod.GameGodWindow
+        if (![NSStringFromClass([win class]) isEqualToString:@"iGameGod.GameGodWindow"]) {
             return;
         }
         
