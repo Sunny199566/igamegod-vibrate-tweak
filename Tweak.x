@@ -46,12 +46,12 @@ static void PlayCustomHaptic(void) {
 %new
 - (void)igod_doubleTapToggle:(UITapGestureRecognizer *)gesture {
     UIView *targetView = gesture.view;
-    // ✅ 关键：0.02 > 0.01，绕过iOS hitTest过滤！触摸拖拽永久有效
     if(targetView.alpha > 0.5f) {
         targetView.alpha = 0.02f;
     } else {
         targetView.alpha = 1.0f;
     }
+    // ✅ 双击只触发震动，**不会触发游戏脚本**
     PlayCustomHaptic();
 }
 
@@ -59,18 +59,31 @@ static void PlayCustomHaptic(void) {
     %orig;
     UIView *view = self;
     if (view.bounds.size.width == 44 && view.bounds.size.height == 44) {
-        BOOL existDoubleTap = NO;
+        UITapGestureRecognizer *singleTap = nil;
+        UITapGestureRecognizer *existDoubleTap = nil;
+
+        // 遍历查找已存在的手势
         for(UIGestureRecognizer *g in view.gestureRecognizers) {
-            if([g isKindOfClass:[UITapGestureRecognizer class]] && ((UITapGestureRecognizer*)g).numberOfTapsRequired == 2) {
-                existDoubleTap = YES;
-                break;
+            if([g isKindOfClass:[UITapGestureRecognizer class]]) {
+                UITapGestureRecognizer *tap = (UITapGestureRecognizer *)g;
+                if(tap.numberOfTapsRequired == 1) {
+                    singleTap = tap;
+                } else if(tap.numberOfTapsRequired == 2) {
+                    existDoubleTap = tap;
+                }
             }
         }
+
         if(!existDoubleTap) {
             UITapGestureRecognizer *dtap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(igod_doubleTapToggle:)];
             dtap.numberOfTapsRequired = 2;
             dtap.cancelsTouchesInView = NO;
             [view addGestureRecognizer:dtap];
+
+            // ✅ 核心修复：单击手势必须等双击识别失败之后，才可以触发，杜绝双击时误触发单击脚本
+            if(singleTap) {
+                [singleTap requireGestureRecognizerToFail:dtap];
+            }
         }
     }
 }
@@ -83,8 +96,9 @@ static void PlayCustomHaptic(void) {
         UIView *tapView = self.view;
         if (!tapView) return;
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
-            // >0.5判定不变，0.02状态不会触发单击震动
-            if(tapView.alpha > 0.5f) {
+            UITapGestureRecognizer *tapSelf = (UITapGestureRecognizer *)self;
+            // ✅ 只允许【单击手势】并且小球可见的时候，才执行震动+脚本
+            if(tapSelf.numberOfTapsRequired == 1 && tapView.alpha > 0.5f) {
                 SetupHapticEngine();
                 PlayCustomHaptic();
             }
