@@ -2,6 +2,7 @@
 #import <CoreHaptics/CoreHaptics.h>
 
 static CHHapticEngine *sharedHapticEngine = nil;
+static BOOL isDoubleTapTriggered = NO;
 
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine != nil) return;
@@ -45,11 +46,16 @@ static void PlayCustomHaptic(void) {
 %hook UIImageView
 %new
 - (void)igod_doubleTapToggle:(UITapGestureRecognizer *)gesture {
+    isDoubleTapTriggered = YES;
+    // 短时间标记，屏蔽单击误触发，时间和系统双击超时对齐
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        isDoubleTapTriggered = NO;
+    });
+
     UIView *targetView = gesture.view;
     UITapGestureRecognizer *singleTap = nil;
     UILongPressGestureRecognizer *longPressTap = nil;
 
-    // 遍历查找：单击、长按手势
     for(UIGestureRecognizer *g in targetView.gestureRecognizers) {
         if([g isKindOfClass:[UITapGestureRecognizer class]]) {
             UITapGestureRecognizer *tap = (UITapGestureRecognizer *)g;
@@ -62,12 +68,10 @@ static void PlayCustomHaptic(void) {
     }
 
     if(targetView.alpha > 0.5f) {
-        // ✅ 隐藏：禁用单击 + 长按；拖拽手势不受影响，可以拖动
         targetView.alpha = 0.02f;
         if(singleTap) singleTap.enabled = NO;
         if(longPressTap) longPressTap.enabled = NO;
     } else {
-        // ✅ 显示：恢复单击 + 长按，IGG全部原生功能恢复
         targetView.alpha = 1.0f;
         if(singleTap) singleTap.enabled = YES;
         if(longPressTap) longPressTap.enabled = YES;
@@ -79,29 +83,19 @@ static void PlayCustomHaptic(void) {
     %orig;
     UIView *view = self;
     if (view.bounds.size.width == 44 && view.bounds.size.height == 44) {
-        UITapGestureRecognizer *singleTap = nil;
         UITapGestureRecognizer *existDoubleTap = nil;
-
         for(UIGestureRecognizer *g in view.gestureRecognizers) {
-            if([g isKindOfClass:[UITapGestureRecognizer class]]) {
-                UITapGestureRecognizer *tap = (UITapGestureRecognizer *)g;
-                if(tap.numberOfTapsRequired == 1) {
-                    singleTap = tap;
-                } else if(tap.numberOfTapsRequired == 2) {
-                    existDoubleTap = tap;
-                }
+            if([g isKindOfClass:[UITapGestureRecognizer class]] && ((UITapGestureRecognizer*)g).numberOfTapsRequired == 2) {
+                existDoubleTap = tap;
+                break;
             }
         }
-
         if(!existDoubleTap) {
             UITapGestureRecognizer *dtap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(igod_doubleTapToggle:)];
             dtap.numberOfTapsRequired = 2;
             dtap.cancelsTouchesInView = NO;
             [view addGestureRecognizer:dtap];
-
-            if(singleTap) {
-                [singleTap requireGestureRecognizerToFail:dtap];
-            }
+            // ✅ 重点：删掉 requireGestureRecognizerToFail！单击不再等待双击，无延迟
         }
     }
 }
@@ -111,6 +105,9 @@ static void PlayCustomHaptic(void) {
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
     if(state == UIGestureRecognizerStateRecognized) {
+        // ✅ 如果刚刚触发了双击，直接跳过，防止双击误执行脚本
+        if(isDoubleTapTriggered) return;
+
         UIView *tapView = self.view;
         if (!tapView) return;
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
