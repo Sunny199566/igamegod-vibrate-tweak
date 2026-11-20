@@ -1,22 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <CoreHaptics/CoreHaptics.h>
-#import <objc/runtime.h>
 
 static CHHapticEngine *sharedHapticEngine = nil;
-static const void *kDoubleTapTargetKey = &kDoubleTapTargetKey;
-
-@interface DoubleTapTarget : NSObject
-- (void)onDoubleTap:(UITapGestureRecognizer *)gesture;
-@end
-
-@implementation DoubleTapTarget
-- (void)onDoubleTap:(UITapGestureRecognizer *)gesture {
-    UIView *targetView = gesture.view;
-    targetView.alpha = (targetView.alpha > 0.5f) ? 0.0f : 1.0f;
-    extern void PlayCustomHaptic(void);
-    PlayCustomHaptic();
-}
-@end
 
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine != nil) return;
@@ -34,7 +19,7 @@ static void SetupHapticEngine(void) {
     }
 }
 
-void PlayCustomHaptic(void) {
+static void PlayCustomHaptic(void) {
     if (@available(iOS 13.0, *)) {
         if (!sharedHapticEngine) {
             UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
@@ -57,30 +42,37 @@ void PlayCustomHaptic(void) {
     }
 }
 
+// ========== 新增双击显隐部分，%new 方式，和你原有代码融合 ==========
 %hook UIImageView
+%new
+- (void)igod_doubleTapToggle:(UITapGestureRecognizer *)gesture {
+    UIView *targetView = gesture.view;
+    targetView.alpha = (targetView.alpha > 0.5f) ? 0.0f : 1.0f;
+    PlayCustomHaptic();
+}
+
 - (void)didMoveToWindow {
     %orig;
     UIView *view = self;
     if (view.bounds.size.width == 44 && view.bounds.size.height == 44) {
-        BOOL hasDoubleTap = NO;
-        for (UIGestureRecognizer *ges in view.gestureRecognizers) {
-            if ([ges isKindOfClass:[UITapGestureRecognizer class]] && ((UITapGestureRecognizer *)ges).numberOfTapsRequired == 2) {
-                hasDoubleTap = YES;
+        BOOL existDoubleTap = NO;
+        for(UIGestureRecognizer *g in view.gestureRecognizers) {
+            if([g isKindOfClass:[UITapGestureRecognizer class]] && ((UITapGestureRecognizer*)g).numberOfTapsRequired == 2) {
+                existDoubleTap = YES;
                 break;
             }
         }
-        if (!hasDoubleTap) {
-            DoubleTapTarget *target = [[DoubleTapTarget alloc] init];
-            objc_setAssociatedObject(view, kDoubleTapTargetKey, target, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            UITapGestureRecognizer *doubleTap = [[UITapGestureRecognizer alloc] initWithTarget:target action:@selector(onDoubleTap:)];
-            doubleTap.numberOfTapsRequired = 2;
-            doubleTap.cancelsTouchesInView = NO;
-            [view addGestureRecognizer:doubleTap];
+        if(!existDoubleTap) {
+            UITapGestureRecognizer *dtap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(igod_doubleTapToggle:)];
+            dtap.numberOfTapsRequired = 2;
+            dtap.cancelsTouchesInView = NO;
+            [view addGestureRecognizer:dtap];
         }
     }
 }
 %end
 
+// ✅ 你原来已经跑通的单击Hook，仅增加alpha判断：透明状态单击不再触发震动
 %hook UITapGestureRecognizer
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
@@ -88,7 +80,9 @@ void PlayCustomHaptic(void) {
         UIView *tapView = self.view;
         if (!tapView) return;
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
-            if (tapView.alpha > 0.5f) {
+            // 只有小球可见的时候才触发震动
+            if(tapView.alpha > 0.5f) {
+                SetupHapticEngine();
                 PlayCustomHaptic();
             }
         }
