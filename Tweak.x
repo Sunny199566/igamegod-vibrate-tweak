@@ -47,7 +47,6 @@ static void PlayCustomHaptic(void) {
 %new
 - (void)igod_doubleTapToggle:(UITapGestureRecognizer *)gesture {
     isDoubleTapTriggered = YES;
-    // 短时间标记，屏蔽单击误触发，时间和系统双击超时对齐
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         isDoubleTapTriggered = NO;
     });
@@ -85,9 +84,12 @@ static void PlayCustomHaptic(void) {
     if (view.bounds.size.width == 44 && view.bounds.size.height == 44) {
         UITapGestureRecognizer *existDoubleTap = nil;
         for(UIGestureRecognizer *g in view.gestureRecognizers) {
-            if([g isKindOfClass:[UITapGestureRecognizer class]] && ((UITapGestureRecognizer*)g).numberOfTapsRequired == 2) {
-                existDoubleTap = tap;
-                break;
+            if([g isKindOfClass:[UITapGestureRecognizer class]]) {
+                UITapGestureRecognizer *tap = (UITapGestureRecognizer *)g;
+                if(tap.numberOfTapsRequired == 2) {
+                    existDoubleTap = tap;
+                    break;
+                }
             }
         }
         if(!existDoubleTap) {
@@ -95,7 +97,6 @@ static void PlayCustomHaptic(void) {
             dtap.numberOfTapsRequired = 2;
             dtap.cancelsTouchesInView = NO;
             [view addGestureRecognizer:dtap];
-            // ✅ 重点：删掉 requireGestureRecognizerToFail！单击不再等待双击，无延迟
         }
     }
 }
@@ -105,7 +106,6 @@ static void PlayCustomHaptic(void) {
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
     if(state == UIGestureRecognizerStateRecognized) {
-        // ✅ 如果刚刚触发了双击，直接跳过，防止双击误执行脚本
         if(isDoubleTapTriggered) return;
 
         UIView *tapView = self.view;
