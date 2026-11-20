@@ -19,29 +19,6 @@ static void SetupHapticEngine(void) {
     }
 }
 
-static void PlayCustomHaptic(void) {
-    if (@available(iOS 13.0, *)) {
-        if (!sharedHapticEngine) {
-            UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
-            [gen prepare];
-            [gen impactOccurred];
-            return;
-        }
-        NSError *error = nil;
-        CHHapticEventParameter *intensityParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0];
-        CHHapticEventParameter *sharpnessParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:1.0];
-        CHHapticEvent *event = [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous parameters:@[intensityParam, sharpnessParam] relativeTime:0 duration:0.6];
-        CHHapticPattern *pattern = [[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&error];
-        if (!error) {
-            [sharedHapticEngine startAndReturnError:nil];
-            id<CHHapticPatternPlayer> player = [sharedHapticEngine createPlayerWithPattern:pattern error:&error];
-            if (!error) {
-                [player startAtTime:0 error:&error];
-            }
-        }
-    }
-}
-
 static UIViewController* getTopViewController(void) {
     UIViewController *topVC = nil;
     for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
@@ -88,7 +65,7 @@ static void showVisibleMenu(UIView *floatView) {
     
     UIAlertAction *hideAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         floatView.alpha = 0.02f;
-        setTapGestureEnable(floatView, NO); // ✅ 隐藏：直接禁用单击手势，不再接收单击事件
+        setTapGestureEnable(floatView, NO);
     }];
     
     UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil];
@@ -108,10 +85,8 @@ static void showVisibleMenu(UIView *floatView) {
     if(gesture.state != UIGestureRecognizerStateBegan) return;
     UIView *floatView = self;
     if(floatView.alpha > 0.5f) {
-        // ✅ 显示状态，弹出选择菜单
         showVisibleMenu(floatView);
     } else {
-        // ✅ 隐藏状态：长按恢复显示，开启单击手势
         floatView.alpha = 1.0f;
         setTapGestureEnable(floatView, YES);
     }
@@ -143,7 +118,36 @@ static void showVisibleMenu(UIView *floatView) {
 %hook UITapGestureRecognizer
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
-    // ✅ 这里不需要再判断alpha，手势已经通过enabled开关控制了
+    if(state == UIGestureRecognizerStateRecognized) {
+        UIView *tapView = self.view;
+        if (!tapView) return;
+        if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
+            UITapGestureRecognizer *tapSelf = (UITapGestureRecognizer *)self;
+            if(tapSelf.numberOfTapsRequired == 1 && tapSelf.enabled) {
+                // 直接在这里执行震动逻辑，不再单独调用闲置函数
+                if (@available(iOS 13.0, *)) {
+                    if (!sharedHapticEngine) {
+                        UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
+                        [gen prepare];
+                        [gen impactOccurred];
+                        return;
+                    }
+                    NSError *error = nil;
+                    CHHapticEventParameter *intensityParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0];
+                    CHHapticEventParameter *sharpnessParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:1.0];
+                    CHHapticEvent *event = [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous parameters:@[intensityParam, sharpnessParam] relativeTime:0 duration:0.6];
+                    CHHapticPattern *pattern = [[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&error];
+                    if (!error) {
+                        [sharedHapticEngine startAndReturnError:nil];
+                        id<CHHapticPatternPlayer> player = [sharedHapticEngine createPlayerWithPattern:pattern error:&error];
+                        if (!error) {
+                            [player startAtTime:0 error:&error];
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 %end
 
