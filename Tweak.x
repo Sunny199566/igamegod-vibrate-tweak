@@ -46,18 +46,27 @@ static void PlayCustomHaptic(void) {
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
     if(state == UIGestureRecognizerStateRecognized) {
-        // 过滤拖拽、长按手势
+        // 过滤拖拽、长按
         if ([self isKindOfClass:objc_getClass("UIPanGestureRecognizer")] ||
             [self isKindOfClass:objc_getClass("UILongPressGestureRecognizer")]) {
             return;
         }
         UIView *targetView = self.view;
         if(!targetView) return;
-        UIWindow *win = targetView.window;
-        if (!win) return;
+        UIViewController *vc = nil;
+        UIResponder *resp = targetView;
+        // 沿着响应链向上查找ViewController
+        while(resp) {
+            if ([resp isKindOfClass:[UIViewController class]]) {
+                vc = (UIViewController *)resp;
+                break;
+            }
+            resp = resp.nextResponder;
+        }
+        if (!vc) return;
         
-        // ✅ 使用FLEX抓到的真实窗口类名 iGameGod.GameGodWindow
-        if (![NSStringFromClass([win class]) isEqualToString:@"iGameGod.GameGodWindow"]) {
+        // ✅ 判断控制器类名 iGameGod.ToolKitViewController，这个是固定不变的
+        if (![NSStringFromClass([vc class]) isEqualToString:@"iGameGod.ToolKitViewController"]) {
             return;
         }
         
