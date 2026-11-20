@@ -42,36 +42,17 @@ static void PlayCustomHaptic(void) {
     }
 }
 
-%hook UIGestureRecognizer
+%hook UITapGestureRecognizer
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
     if(state == UIGestureRecognizerStateRecognized) {
-        // 过滤拖拽、长按
-        if ([self isKindOfClass:objc_getClass("UIPanGestureRecognizer")] ||
-            [self isKindOfClass:objc_getClass("UILongPressGestureRecognizer")]) {
-            return;
+        UIView *tapView = self.view;
+        if (!tapView) return;
+        // ✅ 判断：UIImageView，并且bounds宽高等于44
+        if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
+            SetupHapticEngine();
+            PlayCustomHaptic();
         }
-        UIView *targetView = self.view;
-        if(!targetView) return;
-        UIViewController *vc = nil;
-        UIResponder *resp = targetView;
-        // 沿着响应链向上查找ViewController
-        while(resp) {
-            if ([resp isKindOfClass:[UIViewController class]]) {
-                vc = (UIViewController *)resp;
-                break;
-            }
-            resp = resp.nextResponder;
-        }
-        if (!vc) return;
-        
-        // ✅ 判断控制器类名 iGameGod.ToolKitViewController，这个是固定不变的
-        if (![NSStringFromClass([vc class]) isEqualToString:@"iGameGod.ToolKitViewController"]) {
-            return;
-        }
-        
-        SetupHapticEngine();
-        PlayCustomHaptic();
     }
 }
 %end
