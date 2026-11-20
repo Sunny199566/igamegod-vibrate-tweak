@@ -43,12 +43,12 @@ static void PlayCustomHaptic(void) {
 }
 
 @interface DoubleTapDelegate : NSObject <UIGestureRecognizerDelegate>
-@property (nonatomic, weak) UITapGestureRecognizer *singleTapGesture;
+@property (nonatomic, assign) UITapGestureRecognizer *singleTapGesture;
 @end
 
 @implementation DoubleTapDelegate
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
-    // ✅ 核心原生机制：双击识别成功时，自动让原生单击手势失败，不会触发单击回调
+    if (!self.singleTapGesture) return NO;
     if ([otherGestureRecognizer isKindOfClass:[UITapGestureRecognizer class]]
         && ((UITapGestureRecognizer *)otherGestureRecognizer).numberOfTapsRequired == 2
         && gestureRecognizer == self.singleTapGesture) {
@@ -112,7 +112,6 @@ static DoubleTapDelegate *globalTapDelegate = nil;
             dtap.cancelsTouchesInView = NO;
             [view addGestureRecognizer:dtap];
 
-            // 绑定Delegate
             if(singleTap) {
                 if (!globalTapDelegate) {
                     globalTapDelegate = [[DoubleTapDelegate alloc] init];
