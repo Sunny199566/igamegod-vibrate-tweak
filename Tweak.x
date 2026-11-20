@@ -6,7 +6,7 @@ static CHHapticEngine *sharedHapticEngine = nil;
 static UILabel *g_timeBatteryLabel = nil;
 static NSTimer *g_refreshTimer = nil;
 
-// ========= 【新增：时间电量刷新函数，仅此新增，原有代码不动】 =========
+// ========= 时间电量刷新（完全保留原样） =========
 static void RefreshTimeBatteryLabel(void) {
     if (!g_timeBatteryLabel) return;
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
@@ -28,7 +28,6 @@ static UIViewController* GetRootVC(void) {
     return nil;
 }
 
-// ========= 【新增：Hook原生时间Label，创建独立UI，不修改原有悬浮球逻辑】 =========
 %hook UILabel
 - (void)didMoveToSuperview {
     %orig;
@@ -55,11 +54,12 @@ static UIViewController* GetRootVC(void) {
 }
 %end
 
-// ========= 【你原来整套悬浮球+CoreHaptics震动+0.25s长按代码，原样完整保留，一行不改！】 =========
+// ========= 【修正CoreHaptics方法签名，其余悬浮球长按逻辑全部不动！】 =========
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine) return;
     NSError *err = nil;
-    sharedHapticEngine = [[CHHapticEngine alloc] initWithAndReturnError:&err];
+    // ✅ 修复：initAndReturnError，去掉多余With
+    sharedHapticEngine = [[CHHapticEngine alloc] initAndReturnError:&err];
     if (sharedHapticEngine) {
         [sharedHapticEngine startWithCompletionHandler:nil];
     }
@@ -103,15 +103,18 @@ static void SetupHapticEngine(void) {
     CGRect frm = self.frame;
     if ((int)frm.size.width == 50 && (int)frm.size.height == 50) {
         SetupHapticEngine();
-        // CoreHaptics震动逻辑，完全保留原版
+        NSError *err = nil;
         CHHapticEvent *event = [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous parameters:@[
             [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:0.6],
             [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:0.4]
         ] relativeTime:0 duration:0.12];
-        NSError *err = nil;
         CHHapticPattern *pattern = [[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&err];
         if(pattern) {
-            [sharedHapticEngine startPlayingPattern:pattern completionHandler:nil];
+            // ✅ 修复：先创建player，再start
+            id<CHHapticPatternPlayer> player = [sharedHapticEngine createPlayerWithPattern:pattern error:&err];
+            if(player) {
+                [player startWithCompletionHandler:nil];
+            }
         }
     }
 }
