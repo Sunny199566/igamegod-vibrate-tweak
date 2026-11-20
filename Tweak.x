@@ -98,7 +98,7 @@ static void RefreshFloatLabel(void) {
                             floatBall = view;
                         }
                     }
-                    // ✅ 重点：每次扫描，只要发现带 ":" 的白色大号Label（iGameGod计时）立刻隐藏
+                    // 重点：每次扫描，只要发现带 ":" 的白色大号Label（iGameGod计时）立刻隐藏
                     if ([view isKindOfClass:[UILabel class]]) {
                         UILabel *lb = (UILabel *)view;
                         if(lb.textColor == [UIColor whiteColor] && [lb.text containsString:@":"]){
@@ -127,7 +127,8 @@ static void RefreshFloatLabel(void) {
             customLabel.textColor = [UIColor whiteColor];
             customLabel.textAlignment = NSTextAlignmentCenter;
             customLabel.backgroundColor = [UIColor clearColor];
-            customLabel.zPosition = 999;
+            // ✅修复：layer.zPosition
+            customLabel.layer.zPosition = 999;
             customLabel.userInteractionEnabled = NO;
             [parentView addSubview:customLabel];
         }
