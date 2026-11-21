@@ -121,7 +121,7 @@ static void RefreshFloatLabel(void) {
         }
         
         __block UIView *floatBall = nil;
-        UIWindow *targetWindow = nil;
+        __block UIWindow *targetWindow = nil; // 加上 __block！修复编译报错
         for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
             if (![scene isKindOfClass:[UIWindowScene class]]) continue;
             for (UIWindow *win in scene.windows) {
