@@ -6,7 +6,8 @@
 static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
 static NSTimer *floatLabelRefreshTimer = nil;
-static UILabel *g_timeBatteryLabel = nil; // ✅ 全局缓存Label，只创建一次
+static UILabel *g_timeBatteryLabel = nil;
+static BOOL g_isMenuShowing = NO; // ✅ 新增全局标记：菜单是否正在弹出
 
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine != nil) return;
@@ -54,7 +55,6 @@ static void setTapGestureEnable(UIView *floatView, BOOL enable) {
     }
 }
 
-// ✅ 直接返回缓存好的Label，不再遍历窗口查找
 static UILabel* GetTimeBatteryLabel(void) {
     return g_timeBatteryLabel;
 }
@@ -64,7 +64,6 @@ static void HideTimeBatteryLabel(void) {
         UILabel *lb = GetTimeBatteryLabel();
         if(lb) {
             lb.hidden = YES;
-            lb.layer.zPosition = -999;
         }
     });
 }
@@ -74,7 +73,6 @@ static void ShowTimeBatteryLabel(void) {
         UILabel *lb = GetTimeBatteryLabel();
         if(lb) {
             lb.hidden = NO;
-            lb.layer.zPosition = 999;
         }
     });
 }
@@ -99,6 +97,8 @@ static void showVisibleMenu(UIView *floatView) {
     }];
     
     UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
+        // ✅ 弹窗关闭，清除标记，恢复文字
+        g_isMenuShowing = NO;
         ShowTimeBatteryLabel();
     }];
     [alert addAction:nativeMenuAction];
@@ -107,6 +107,8 @@ static void showVisibleMenu(UIView *floatView) {
     
     UIViewController *topVC = getTopViewController();
     if(topVC) {
+        g_isMenuShowing = YES; // ✅ 标记：菜单已经弹出
+        HideTimeBatteryLabel();
         [topVC presentViewController:alert animated:YES completion:nil];
     }
 }
@@ -114,6 +116,9 @@ static void showVisibleMenu(UIView *floatView) {
 #pragma mark - 刷新逻辑
 static void RefreshFloatLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
+        // ✅ 如果菜单正在显示，直接跳过刷新，不去修改label状态
+        if(g_isMenuShowing) return;
+        
         __block UIView *floatBall = nil;
         for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
             if (![scene isKindOfClass:[UIWindowScene class]]) continue;
@@ -137,7 +142,6 @@ static void RefreshFloatLabel(void) {
         if(!floatBall) return;
         UIView *parentView = floatBall.superview;
         
-        // ✅ 如果Label还没有创建，一次性创建，之后永久复用
         if (!g_timeBatteryLabel) {
             g_timeBatteryLabel = [[UILabel alloc] init];
             g_timeBatteryLabel.tag = kCustomTimeBatteryTag;
@@ -145,7 +149,7 @@ static void RefreshFloatLabel(void) {
             g_timeBatteryLabel.textColor = [UIColor whiteColor];
             g_timeBatteryLabel.textAlignment = NSTextAlignmentCenter;
             g_timeBatteryLabel.backgroundColor = [UIColor clearColor];
-            g_timeBatteryLabel.layer.zPosition = 999;
+            g_timeBatteryLabel.layer.zPosition = -10; // ✅ zPosition负数，放到底层，不会盖弹窗
             g_timeBatteryLabel.userInteractionEnabled = NO;
             [parentView addSubview:g_timeBatteryLabel];
         }
@@ -165,17 +169,15 @@ static void RefreshFloatLabel(void) {
 %hook UIImageView
 %new
 - (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
-    // ========== 只处理 Began 长按识别成功状态 ==========
     if(gesture.state != UIGestureRecognizerStateBegan) {
         return;
     }
     UIView *floatView = self;
     if(floatView.alpha > 0.5f) {
-        // ✅ 悬浮球可见长按：隐藏时间电量条，弹菜单
-        HideTimeBatteryLabel();
+        // ✅ 悬浮球可见：弹出自定义菜单流程
         showVisibleMenu(floatView);
     } else {
-        // ✅ 悬浮球处于隐藏状态长按：直接恢复悬浮球，时间条保持原样
+        // ✅ 悬浮球隐藏状态长按：恢复悬浮球，时间条保持显示，菜单标记不变
         floatView.alpha = 1.0f;
         setTapGestureEnable(floatView, YES);
     }
@@ -201,16 +203,6 @@ static void RefreshFloatLabel(void) {
             [view addGestureRecognizer:longTap];
         }
     }
-}
-%end
-
-// Hook菜单View关闭事件
-%hook UIView
-- (void)removeFromSuperview {
-    %orig;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        ShowTimeBatteryLabel();
-    });
 }
 %end
 
