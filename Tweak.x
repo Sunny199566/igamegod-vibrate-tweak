@@ -56,7 +56,7 @@ static void showVisibleMenu(UIView *floatView) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     
     UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        // 先隐藏文字（菜单弹出瞬间文字消失）
+        // 第一步：立刻隐藏时间电量条
         showTimeLabel = NO;
         for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
             if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
@@ -66,8 +66,10 @@ static void showVisibleMenu(UIView *floatView) {
                 break;
             }
         }
-        // ✅【重点】直接立刻恢复，删掉dispatch_after延时！关闭原生菜单文字马上出现，无等待
-        showTimeLabel = YES;
+        // ✅ 放到下一次runloop再恢复，保证隐藏状态可以被定时器捕获，无固定延时
+        dispatch_async(dispatch_get_main_queue(), ^{
+            showTimeLabel = YES;
+        });
     }];
     
     UIAlertAction *hideBallAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
