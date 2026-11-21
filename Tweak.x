@@ -117,8 +117,18 @@ static void RefreshLabel(void) {
     BOOL hasLongTap = NO;
     BOOL hasDoubleTap = NO;
     for(UIGestureRecognizer *g in view.gestureRecognizers) {
-        if([g isKindOfClass:UILongPressGestureRecognizer.class] && g.minimumPressDuration == 0.25) hasLongTap = YES;
-        if([g isKindOfClass:UITapGestureRecognizer.class] && ((UITapGestureRecognizer*)g).numberOfTapsRequired == 2) hasDoubleTap = YES;
+        if([g isKindOfClass:UILongPressGestureRecognizer.class]) {
+            UILongPressGestureRecognizer *longG = (UILongPressGestureRecognizer *)g;
+            if(longG.minimumPressDuration == 0.25) {
+                hasLongTap = YES;
+            }
+        }
+        if([g isKindOfClass:UITapGestureRecognizer.class]) {
+            UITapGestureRecognizer *tapG = (UITapGestureRecognizer *)g;
+            if(tapG.numberOfTapsRequired == 2) {
+                hasDoubleTap = YES;
+            }
+        }
     }
     if(!hasLongTap) {
         UILongPressGestureRecognizer *longG = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(shortLongPress:)];
