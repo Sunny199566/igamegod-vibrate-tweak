@@ -65,13 +65,6 @@ static void HideTimeBatteryLabel(void) {
     });
 }
 
-static void ShowTimeBatteryLabel(void) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UILabel *lb = GetTimeBatteryLabel();
-        if(lb) lb.hidden = NO;
-    });
-}
-
 #pragma mark - 检测连点器原生选择面板 frame(0,0,200,32)
 static BOOL CheckPanelViewExist(void) {
     __block BOOL foundPanel = NO;
