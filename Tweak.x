@@ -52,12 +52,38 @@ static void setTapGestureEnable(UIView *floatView, BOOL enable) {
     }
 }
 
+static UILabel* getTimeLabel(void) {
+    __block UILabel *resultLabel = nil;
+    for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
+        if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+        for (UIWindow *win in scene.windows) {
+            __block void (^scanView)(UIView *) = nil;
+            scanView = ^(UIView *view) {
+                if (resultLabel) return;
+                if(view.tag == kCustomTimeBatteryTag) {
+                    resultLabel = (UILabel *)view;
+                    return;
+                }
+                for(UIView *sub in view.subviews) {
+                    scanView(sub);
+                }
+            };
+            scanView(win);
+            if(resultLabel) break;
+        }
+        if(resultLabel) break;
+    }
+    return resultLabel;
+}
+
 static void showVisibleMenu(UIView *floatView) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     
     UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        // 第一步：立刻隐藏时间电量条
-        showTimeLabel = NO;
+        // ✅【核心修复】直接立刻拿到Label，马上隐藏，不需要等定时器刷新！立竿见影
+        UILabel *lb = getTimeLabel();
+        if(lb) lb.hidden = YES;
+        
         for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
             if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
                 UILongPressGestureRecognizer *longGes = (UILongPressGestureRecognizer *)g;
@@ -66,7 +92,7 @@ static void showVisibleMenu(UIView *floatView) {
                 break;
             }
         }
-        // ✅ 放到下一次runloop再恢复，保证隐藏状态可以被定时器捕获，无固定延时
+        // 原生菜单弹出，下一帧恢复显示
         dispatch_async(dispatch_get_main_queue(), ^{
             showTimeLabel = YES;
         });
@@ -193,7 +219,7 @@ static void RefreshFloatLabel(void) {
         UIView *tapView = self.view;
         if (!tapView) return;
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
-            UITapGestureRecognizer *tapSelf = (UITapGestureRecognizer *)self;
+            UITapGestureRecognizer *tapSelf = self;
             if(tapSelf.numberOfTapsRequired == 1 && tapSelf.enabled) {
                 if (@available(iOS 13.0, *)) {
                     if (!sharedHapticEngine) {
