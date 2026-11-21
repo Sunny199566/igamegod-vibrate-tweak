@@ -153,7 +153,7 @@ static void RefreshFloatLabel(void) {
         if (!g_timeBatteryLabel) {
             g_timeBatteryLabel = [[UILabel alloc] init];
             g_timeBatteryLabel.tag = kCustomTimeBatteryTag;
-            g_timeBatteryLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+            g_timeBatteryLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
             g_timeBatteryLabel.textColor = [UIColor whiteColor];
             g_timeBatteryLabel.textAlignment = NSTextAlignmentCenter;
             g_timeBatteryLabel.backgroundColor = [UIColor clearColor];
@@ -169,7 +169,7 @@ static void RefreshFloatLabel(void) {
         NSString *timeStr = [fmt stringFromDate:[NSDate date]];
         [UIDevice currentDevice].batteryMonitoringEnabled = YES;
         NSInteger bat = roundf([UIDevice currentDevice].batteryLevel * 100);
-        g_timeBatteryLabel.text = [NSString stringWithFormat:@"%@ • %ld%%", timeStr, bat];
+        g_timeBatteryLabel.text = [NSString stringWithFormat:@"%@•%ld%%", timeStr, bat];
         g_timeBatteryLabel.hidden = NO;
     });
 }
