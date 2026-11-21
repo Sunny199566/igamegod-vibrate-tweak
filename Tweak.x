@@ -4,7 +4,6 @@
 static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
 static NSTimer *floatLabelRefreshTimer = nil;
-// ✅ 初始状态：没有打开菜单，NO
 static BOOL nativeMenuActive = NO;
 
 static void SetupHapticEngine(void) {
@@ -177,10 +176,8 @@ static void RefreshFloatLabel(void) {
         CGRect ballFrame = floatBall.frame;
         customLabel.frame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
         
-        // ✅ 修正！定时器刷新严格跟随状态：打开菜单就隐藏，否则显示
-        if(nativeMenuActive){
-            customLabel.hidden = YES;
-        }else{
+        // ✅ 核心修复：菜单打开时，定时器不再修改hidden！只更新文字
+        if(!nativeMenuActive){
             customLabel.hidden = NO;
         }
         
