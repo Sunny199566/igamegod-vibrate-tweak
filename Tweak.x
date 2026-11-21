@@ -1,10 +1,52 @@
 #import <UIKit/UIKit.h>
 #import <dispatch/dispatch.h>
+#import <CoreHaptics/CoreHaptics.h>
 
+@protocol CHHapticPatternPlayer;
+static CHHapticEngine *sharedHapticEngine = nil;
 static UILabel *g_timeBatteryLabel = nil;
 static NSTimer *g_refreshTimer = nil;
-static UITapGestureRecognizer *g_restoreTap = nil;
+static UITapGestureRecognizer *g_restoreDoubleTap = nil;
 
+#pragma mark - CoreHaptics 震动引擎初始化
+static void InitHapticEngine(void) {
+    if (sharedHapticEngine) return;
+    if (@available(iOS 13.0, *)) {
+        if (!CHHapticEngine.capabilitiesForHardware.supportsHaptics) return;
+        NSError *err = nil;
+        sharedHapticEngine = [[CHHapticEngine alloc] initAndReturnError:&err];
+        if (err || !sharedHapticEngine) return;
+        sharedHapticEngine.resetHandler = ^{
+            [sharedHapticEngine startAndReturnError:nil];
+        };
+    }
+}
+
+#pragma mark - 执行强震动 强度1.0 / 锐度1.0 / 0.6s
+static void PlayStrongHaptic(void) {
+    if (@available(iOS 13.0, *)) {
+        if (!sharedHapticEngine) {
+            UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
+            [gen prepare];
+            [gen impactOccurred];
+            return;
+        }
+        NSError *err = nil;
+        CHHapticEventParameter *intensity = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0];
+        CHHapticEventParameter *sharpness = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:1.0];
+        CHHapticEvent *event = [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous parameters:@[intensity, sharpness] relativeTime:0 duration:0.6];
+        CHHapticPattern *pattern = [[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&err];
+        if (!err) {
+            [sharedHapticEngine startAndReturnError:nil];
+            id<CHHapticPatternPlayer> player = [sharedHapticEngine createPlayerWithPattern:pattern error:&err];
+            if (!err) {
+                [player startAtTime:0 error:&err];
+            }
+        }
+    }
+}
+
+#pragma mark - 时间电量刷新（原版逻辑完全未修改）
 static void RefreshTimeBatteryLabel(void) {
     if (!g_timeBatteryLabel) return;
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
@@ -20,7 +62,6 @@ static void RefreshTimeBatteryLabel(void) {
 - (void)didMoveToSuperview {
     %orig;
     CGRect frm = self.frame;
-    // 精准匹配控件：width=50 height=20 【完全保留你原版时间电量代码，一行不动】
     if ((int)frm.size.width == 50 && (int)frm.size.height == 20 && !g_timeBatteryLabel) {
         g_timeBatteryLabel = self;
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -34,10 +75,10 @@ static void RefreshTimeBatteryLabel(void) {
 }
 %end
 
-// ====== 悬浮球手势【基于你原版UIView hook修改，保留原有框架】======
+#pragma mark - 悬浮球手势逻辑
 static void setTapGestureEnable(UIView *ballView, BOOL enable) {
     for(UIGestureRecognizer *ges in ballView.gestureRecognizers) {
-        if([ges isKindOfClass:[UITapGestureRecognizer class]] && ges != g_restoreTap) {
+        if([ges isKindOfClass:[UITapGestureRecognizer class]] && ges != g_restoreDoubleTap) {
             ges.enabled = enable;
         }
     }
@@ -45,20 +86,18 @@ static void setTapGestureEnable(UIView *ballView, BOOL enable) {
 
 %hook UIView
 %new
-// ✅ 修改后长按逻辑：删除Alert弹窗
+// 长按逻辑：显示状态长按隐藏，隐藏状态放行原生菜单
 - (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
     if(gesture.state != UIGestureRecognizerStateBegan) return;
     UIView *floatBall = gesture.view;
     if(floatBall.alpha > 0.5f) {
-        // ✅ 球可见：长按直接隐藏悬浮球
         floatBall.alpha = 0.02f;
         setTapGestureEnable(floatBall, NO);
     }
-    // ✅ 球隐藏状态：直接不做任何处理，系统原生长按手势执行，弹出原生菜单
 }
 
-// ✅ 新增：隐藏状态单击恢复悬浮球
-- (void)restoreBallTap:(UITapGestureRecognizer *)gesture {
+// ✅ 修改为【双击】恢复悬浮球
+- (void)restoreBallDoubleTap:(UITapGestureRecognizer *)gesture {
     UIView *floatBall = gesture.view;
     if(floatBall.alpha <= 0.5f) {
         floatBall.alpha = 1.0f;
@@ -69,7 +108,7 @@ static void setTapGestureEnable(UIView *ballView, BOOL enable) {
 - (void)didMoveToSuperview {
     %orig;
     CGRect frm = self.frame;
-    // 悬浮球尺寸判断：保留你原版的 50 × 50
+    // 原版悬浮球判断：50 × 50
     if ((int)frm.size.width == 50 && (int)frm.size.height == 50) {
         BOOL hasLongPress = NO;
         for(UIGestureRecognizer *ges in self.gestureRecognizers) {
@@ -86,15 +125,40 @@ static void setTapGestureEnable(UIView *ballView, BOOL enable) {
             longTap.minimumPressDuration = 0.25f;
             [self addGestureRecognizer:longTap];
         }
-        // 添加恢复单击手势，只创建一次
-        if(!g_restoreTap) {
-            g_restoreTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(restoreBallTap:)];
-            [self addGestureRecognizer:g_restoreTap];
+        // ✅ 双击手势 numberOfTapsRequired = 2
+        if(!g_restoreDoubleTap) {
+            g_restoreDoubleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(restoreBallDoubleTap:)];
+            g_restoreDoubleTap.numberOfTapsRequired = 2;
+            [self addGestureRecognizer:g_restoreDoubleTap];
         }
     }
 }
 %end
 
+// ✅ Hook原生单击手势，悬浮球可见时触发高级震动
+%hook UITapGestureRecognizer
+- (void)setState:(UIGestureRecognizerState)state {
+    %orig;
+    if(state != UIGestureRecognizerStateRecognized) return;
+    UIView *tapView = self.view;
+    if (!tapView) return;
+    CGRect frm = tapView.frame;
+    if (!([tapView isKindOfClass:[UIView class]] && (int)frm.size.width == 50 && (int)frm.size.height == 50)) return;
+    UITapGestureRecognizer *tapSelf = self;
+    if(tapSelf.numberOfTapsRequired != 1 || tapSelf.enabled == NO) return;
+
+    // 跳过我们自己添加的双击手势
+    if (tapSelf == g_restoreDoubleTap) return;
+    // 只有悬浮球显示的时候才震动
+    if(tapView.alpha <= 0.5f) return;
+
+    PlayStrongHaptic();
+}
+%end
+
 %ctor {
     %init();
+    dispatch_async(dispatch_get_main_queue(), ^{
+        InitHapticEngine();
+    });
 }
