@@ -22,36 +22,6 @@ static void SetupHapticEngine(void) {
     }
 }
 
-static UIViewController* getTopViewController(void) {
-    UIViewController *topVC = nil;
-    for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
-        if ([scene isKindOfClass:[UIWindowScene class]]) {
-            for (UIWindow *win in scene.windows) {
-                if (win.isKeyWindow) {
-                    topVC = win.rootViewController;
-                    break;
-                }
-            }
-        }
-    }
-    while(topVC && topVC.presentedViewController) {
-        topVC = topVC.presentedViewController;
-    }
-    return topVC;
-}
-
-static void setTapGestureEnable(UIView *floatView, BOOL enable) {
-    for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
-        if([g isKindOfClass:[UITapGestureRecognizer class]]) {
-            UITapGestureRecognizer *tapGes = (UITapGestureRecognizer *)g;
-            if(tapGes.numberOfTapsRequired == 1) {
-                tapGes.enabled = enable;
-                break;
-            }
-        }
-    }
-}
-
 static UILabel* getTimeLabel(void) {
     __block UILabel *resultLabel = nil;
     for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
