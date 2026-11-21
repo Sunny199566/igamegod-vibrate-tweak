@@ -4,6 +4,7 @@
 static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
 static NSTimer *floatLabelRefreshTimer = nil;
+// ✅ 初始状态：没有打开菜单，NO
 static BOOL nativeMenuActive = NO;
 
 static void SetupHapticEngine(void) {
@@ -81,7 +82,7 @@ static void RestoreTimeBatteryLabel(void) {
         nativeMenuActive = NO;
         UILabel *lb = getTimeLabel();
         if(lb) {
-            lb.alpha = 1.0f;
+            lb.hidden = NO;
         }
     });
 }
@@ -91,7 +92,7 @@ static void HideTimeBatteryLabel(void) {
         nativeMenuActive = YES;
         UILabel *lb = getTimeLabel();
         if(lb) {
-            lb.alpha = 0.0f;
+            lb.hidden = YES;
         }
     });
 }
@@ -176,8 +177,12 @@ static void RefreshFloatLabel(void) {
         CGRect ballFrame = floatBall.frame;
         customLabel.frame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
         
-        // ✅ 核心修改：使用alpha控制显示隐藏，定时器每次刷新都读取nativeMenuActive状态
-        customLabel.alpha = nativeMenuActive ? 0.0f : 1.0f;
+        // ✅ 修正！定时器刷新严格跟随状态：打开菜单就隐藏，否则显示
+        if(nativeMenuActive){
+            customLabel.hidden = YES;
+        }else{
+            customLabel.hidden = NO;
+        }
         
         NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
         fmt.dateFormat = @"HH:mm";
