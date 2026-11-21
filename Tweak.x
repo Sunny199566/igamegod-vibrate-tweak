@@ -114,11 +114,9 @@ static void showVisibleMenu(UIView *floatView) {
     UIAlertAction *hideBallAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         floatView.alpha = 0.02f;
         setTapGestureEnable(floatView, NO);
-        // 隐藏悬浮球之后，时间电量条保持显示，不做任何操作
     }];
     
     UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
-        // 点击取消，恢复时间电量条显示
         ShowTimeBatteryLabel();
     }];
     [alert addAction:nativeMenuAction];
@@ -193,15 +191,17 @@ static void RefreshFloatLabel(void) {
 %hook UIImageView
 %new
 - (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
-    if(gesture.state != UIGestureRecognizerStateBegan) return;
+    // ========== 核心修复：只处理 Began 状态 ==========
+    if(gesture.state != UIGestureRecognizerStateBegan) {
+        return;
+    }
     UIView *floatView = self;
     if(floatView.alpha > 0.5f) {
-        // ========== 悬浮球可见：长按第一步，立刻隐藏时间电量条 ==========
+        // ✅ 长按识别成功瞬间：隐藏时间电量条，弹菜单
         HideTimeBatteryLabel();
-        // 然后再弹出自定义菜单
         showVisibleMenu(floatView);
     } else {
-        // ========== 悬浮球已经隐藏：长按恢复悬浮球，时间电量条保持原样，不修改 ==========
+        // ✅ 悬浮球处于隐藏状态长按：直接恢复悬浮球，完全不动时间条
         floatView.alpha = 1.0f;
         setTapGestureEnable(floatView, YES);
     }
@@ -234,7 +234,6 @@ static void RefreshFloatLabel(void) {
 %hook UIView
 - (void)removeFromSuperview {
     %orig;
-    // ActionSheet弹窗关闭之后，恢复时间电量条
     dispatch_async(dispatch_get_main_queue(), ^{
         ShowTimeBatteryLabel();
     });
