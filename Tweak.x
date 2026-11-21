@@ -7,7 +7,6 @@ static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
 static NSTimer *floatLabelRefreshTimer = nil;
 static UILabel *g_timeBatteryLabel = nil;
-static BOOL g_isMenuShowing = NO; // ✅ 新增全局标记：菜单是否正在弹出
 
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine != nil) return;
@@ -62,62 +61,55 @@ static UILabel* GetTimeBatteryLabel(void) {
 static void HideTimeBatteryLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         UILabel *lb = GetTimeBatteryLabel();
-        if(lb) {
-            lb.hidden = YES;
-        }
+        if(lb) lb.hidden = YES;
     });
 }
 
 static void ShowTimeBatteryLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         UILabel *lb = GetTimeBatteryLabel();
-        if(lb) {
-            lb.hidden = NO;
-        }
+        if(lb) lb.hidden = NO;
     });
 }
 
-static void showVisibleMenu(UIView *floatView) {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    
-    UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
-            if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
-                UILongPressGestureRecognizer *longGes = (UILongPressGestureRecognizer *)g;
-                longGes.state = UIGestureRecognizerStateBegan;
-                longGes.state = UIGestureRecognizerStateRecognized;
-                break;
-            }
+#pragma mark - 检测连点器原生选择面板 frame(0,0,200,32)
+static BOOL CheckPanelViewExist(void) {
+    __block BOOL foundPanel = NO;
+    for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
+        if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+        for (UIWindow *win in scene.windows) {
+            __block void (^scanView)(UIView *) = nil;
+            scanView = ^(UIView *view) {
+                if ([view isKindOfClass:[UIView class]]) {
+                    CGRect frm = view.frame;
+                    // 增加±1容错，防止小数坐标识别失败
+                    if( (abs((int)frm.origin.x - 0) <=1) && (abs((int)frm.origin.y -0) <=1) && (abs((int)frm.size.width -200) <=1) && (abs((int)frm.size.height -32) <=1) ){
+                        foundPanel = YES;
+                        return;
+                    }
+                }
+                for(UIView *sub in view.subviews) {
+                    scanView(sub);
+                    if(foundPanel) return;
+                }
+            };
+            scanView(win);
+            if(foundPanel) break;
         }
-    }];
-    
-    UIAlertAction *hideBallAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        floatView.alpha = 0.02f;
-        setTapGestureEnable(floatView, NO);
-    }];
-    
-    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
-        // ✅ 弹窗关闭，清除标记，恢复文字
-        g_isMenuShowing = NO;
-        ShowTimeBatteryLabel();
-    }];
-    [alert addAction:nativeMenuAction];
-    [alert addAction:hideBallAction];
-    [alert addAction:cancelAction];
-    
-    UIViewController *topVC = getTopViewController();
-    if(topVC) {
-        g_isMenuShowing = YES; // ✅ 标记：菜单已经弹出
-        HideTimeBatteryLabel();
-        [topVC presentViewController:alert animated:YES completion:nil];
+        if(foundPanel) break;
     }
+    return foundPanel;
 }
 
 #pragma mark - 刷新逻辑
 static void RefreshFloatLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        // ✅ 如果菜单正在显示，直接跳过刷新，不去修改label状态
-        if(g_isMenuShowing) return;
+        // ✅ 仅判断原生200×32面板，我们自己的自定义菜单不再隐藏文字
+        BOOL panelIsOpen = CheckPanelViewExist();
+        if(panelIsOpen) {
+            HideTimeBatteryLabel();
+            return;
+        }
         
         __block UIView *floatBall = nil;
         for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
@@ -149,7 +141,7 @@ static void RefreshFloatLabel(void) {
             g_timeBatteryLabel.textColor = [UIColor whiteColor];
             g_timeBatteryLabel.textAlignment = NSTextAlignmentCenter;
             g_timeBatteryLabel.backgroundColor = [UIColor clearColor];
-            g_timeBatteryLabel.layer.zPosition = -10; // ✅ zPosition负数，放到底层，不会盖弹窗
+            g_timeBatteryLabel.layer.zPosition = -10;
             g_timeBatteryLabel.userInteractionEnabled = NO;
             [parentView addSubview:g_timeBatteryLabel];
         }
@@ -162,7 +154,40 @@ static void RefreshFloatLabel(void) {
         [UIDevice currentDevice].batteryMonitoringEnabled = YES;
         NSInteger bat = roundf([UIDevice currentDevice].batteryLevel * 100);
         g_timeBatteryLabel.text = [NSString stringWithFormat:@"%@ • %ld%%", timeStr, bat];
+        g_timeBatteryLabel.hidden = NO;
     });
+}
+
+static void showVisibleMenu(UIView *floatView) {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球菜单" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    
+    UIAlertAction *actionHideBall = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        floatView.alpha = 0.02f;
+        setTapGestureEnable(floatView, NO);
+    }];
+    
+    UIAlertAction *actionOpenNativeMenu = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        // 唤起连点器原生长按逻辑，弹出那个200×32选择面板
+        for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
+            if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
+                UILongPressGestureRecognizer *longGes = (UILongPressGestureRecognizer *)g;
+                longGes.state = UIGestureRecognizerStateBegan;
+                longGes.state = UIGestureRecognizerStateRecognized;
+                break;
+            }
+        }
+    }];
+    
+    UIAlertAction *actionCancel = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil];
+    
+    [alert addAction:actionHideBall];
+    [alert addAction:actionOpenNativeMenu];
+    [alert addAction:actionCancel];
+    
+    UIViewController *topVC = getTopViewController();
+    if(topVC) {
+        [topVC presentViewController:alert animated:YES completion:nil];
+    }
 }
 
 #pragma mark - 悬浮球Hook
@@ -174,10 +199,10 @@ static void RefreshFloatLabel(void) {
     }
     UIView *floatView = self;
     if(floatView.alpha > 0.5f) {
-        // ✅ 悬浮球可见：弹出自定义菜单流程
+        // ✅ 悬浮球可见：弹出自定义菜单，时间电量条保持显示，不会隐藏
         showVisibleMenu(floatView);
     } else {
-        // ✅ 悬浮球隐藏状态长按：恢复悬浮球，时间条保持显示，菜单标记不变
+        // ✅ 悬浮球隐藏状态长按：直接恢复悬浮球
         floatView.alpha = 1.0f;
         setTapGestureEnable(floatView, YES);
     }
@@ -248,6 +273,7 @@ static void RefreshFloatLabel(void) {
             [floatLabelRefreshTimer invalidate];
             floatLabelRefreshTimer = nil;
         }
+        // 0.5s轮询；如果觉得还有延迟，可以改成0.2，响应更快，功耗几乎感知不到
         floatLabelRefreshTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer * _Nonnull timer) {
             RefreshFloatLabel();
         }];
