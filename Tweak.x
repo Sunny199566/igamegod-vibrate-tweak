@@ -5,8 +5,7 @@ static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
 static NSTimer *floatLabelRefreshTimer = nil;
 static BOOL showTimeLabel = YES;
-static BOOL menuIsOpen = NO;
-static BOOL blockRestoreFlag = NO; // 屏蔽恢复标记：打开原生菜单期间禁止恢复
+static BOOL nativeMenuActive = NO;
 
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine != nil) return;
@@ -78,26 +77,19 @@ static UILabel* getTimeLabel(void) {
     return resultLabel;
 }
 
-// 判断原生菜单窗口是否还存在
-static BOOL IsNativeMenuWindowAlive(void) {
-    for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
-        for (UIWindow *win in scene.windows) {
-            // 非全屏、非主key窗口，判定为原生菜单弹窗窗口
-            if (!win.isKeyWindow && !CGRectEqualToRect(win.frame, [UIScreen mainScreen].bounds)) {
-                return YES;
-            }
-        }
-    }
-    return NO;
+static void RestoreTimeBatteryLabel(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        nativeMenuActive = NO;
+        UILabel *lb = getTimeLabel();
+        if(lb) lb.hidden = NO;
+    });
 }
 
 static void showVisibleMenu(UIView *floatView) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     
     UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        // ✅ 打开原生菜单：开启屏蔽锁，立刻隐藏时间电量条
-        blockRestoreFlag = YES;
-        menuIsOpen = YES;
+        nativeMenuActive = YES;
         UILabel *lb = getTimeLabel();
         if(lb) lb.hidden = YES;
         
@@ -176,11 +168,7 @@ static void RefreshFloatLabel(void) {
         CGRect ballFrame = floatBall.frame;
         customLabel.frame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
         
-        if(menuIsOpen){
-            customLabel.hidden = YES;
-        }else{
-            customLabel.hidden = !showTimeLabel;
-        }
+        customLabel.hidden = nativeMenuActive;
         
         NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
         fmt.dateFormat = @"HH:mm";
@@ -202,18 +190,6 @@ static void RefreshFloatLabel(void) {
     } else {
         floatView.alpha = 1.0f;
         setTapGestureEnable(floatView, YES);
-    }
-}
-
-- (void)didMoveToSuperview {
-    %orig;
-    // ✅ 核心修改：如果屏蔽锁开启，直接跳过恢复逻辑！临时视图挂载不会恢复时间条
-    if(blockRestoreFlag) return;
-    
-    if (self.superview != nil) {
-        menuIsOpen = NO;
-        UILabel *lb = getTimeLabel();
-        if(lb) lb.hidden = NO;
     }
 }
 
@@ -240,7 +216,16 @@ static void RefreshFloatLabel(void) {
 }
 %end
 
-// ✅ 利用手势点击事件做判断：点击悬浮球的时候，检查原生菜单窗口是否关闭，解除屏蔽锁，恢复时间条
+// ✅ 核心Hook：UIViewController viewDidDisappear，原生菜单关闭完成，自动恢复时间电量条
+%hook UIViewController
+- (void)viewDidDisappear:(BOOL)animated {
+    %orig;
+    if(nativeMenuActive) {
+        RestoreTimeBatteryLabel();
+    }
+}
+%end
+
 %hook UITapGestureRecognizer
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
@@ -248,14 +233,6 @@ static void RefreshFloatLabel(void) {
         UIView *tapView = self.view;
         if (!tapView) return;
         if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
-            // 单击悬浮球：原生菜单窗口消失了，才解除屏蔽，恢复时间电量条
-            if(blockRestoreFlag && !IsNativeMenuWindowAlive()){
-                blockRestoreFlag = NO;
-                menuIsOpen = NO;
-                UILabel *lb = getTimeLabel();
-                if(lb) lb.hidden = NO;
-            }
-
             UITapGestureRecognizer *tapSelf = self;
             if(tapSelf.numberOfTapsRequired == 1 && tapSelf.enabled) {
                 if (@available(iOS 13.0, *)) {
