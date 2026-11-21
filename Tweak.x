@@ -81,8 +81,7 @@ static void RestoreTimeBatteryLabel(void) {
         nativeMenuActive = NO;
         UILabel *lb = getTimeLabel();
         if(lb) {
-            lb.hidden = NO;
-            lb.layer.zPosition = 999;
+            lb.alpha = 1.0f;
         }
     });
 }
@@ -92,8 +91,7 @@ static void HideTimeBatteryLabel(void) {
         nativeMenuActive = YES;
         UILabel *lb = getTimeLabel();
         if(lb) {
-            lb.hidden = YES;
-            lb.layer.zPosition = -999;
+            lb.alpha = 0.0f;
         }
     });
 }
@@ -172,20 +170,14 @@ static void RefreshFloatLabel(void) {
             customLabel.textColor = [UIColor whiteColor];
             customLabel.textAlignment = NSTextAlignmentCenter;
             customLabel.backgroundColor = [UIColor clearColor];
-            customLabel.layer.zPosition = 999;
             customLabel.userInteractionEnabled = NO;
             [parentView addSubview:customLabel];
         }
         CGRect ballFrame = floatBall.frame;
         customLabel.frame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
         
-        // 核心！严格跟随nativeMenuActive状态
-        customLabel.hidden = nativeMenuActive;
-        if(!nativeMenuActive) {
-            customLabel.layer.zPosition = 999;
-        } else {
-            customLabel.layer.zPosition = -999;
-        }
+        // ✅ 核心修改：使用alpha控制显示隐藏，定时器每次刷新都读取nativeMenuActive状态
+        customLabel.alpha = nativeMenuActive ? 0.0f : 1.0f;
         
         NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
         fmt.dateFormat = @"HH:mm";
@@ -213,7 +205,7 @@ static void RefreshFloatLabel(void) {
 - (void)didMoveToWindow {
     %orig;
     UIView *view = self;
-    if (view.bounds.size.width == 44 && view.bounds.size.height == 44) {
+    if (view.bounds.size.width == 44 && view.bounds.size.height ==44) {
         BOOL hasCustomLongPress = NO;
         for(UIGestureRecognizer *g in view.gestureRecognizers) {
             if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
