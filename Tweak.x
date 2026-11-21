@@ -7,7 +7,12 @@ static CHHapticEngine *sharedHapticEngine = nil;
 static UILabel *g_timeBatteryLabel = nil;
 static NSTimer *g_refreshTimer = nil;
 
-#pragma mark - CoreHaptics 震动引擎初始化
+// 手势静态引用，用来动态开关
+static UILongPressGestureRecognizer *g_customLongPress = nil;
+static UITapGestureRecognizer *g_singleTapHaptic = nil;
+static UITapGestureRecognizer *g_doubleTapRestore = nil;
+
+#pragma mark - CoreHaptics 震动引擎
 static void InitHapticEngine(void) {
     if (sharedHapticEngine) return;
     if (@available(iOS 13.0, *)) {
@@ -21,7 +26,7 @@ static void InitHapticEngine(void) {
     }
 }
 
-#pragma mark - 执行强震动 强度1.0 / 锐度1.0 / 0.6s
+#pragma mark - 强震动：强度1.0 / 锐度1.0 / 持续0.6s
 static void PlayStrongHaptic(void) {
     if (@available(iOS 13.0, *)) {
         if (!sharedHapticEngine) {
@@ -45,7 +50,7 @@ static void PlayStrongHaptic(void) {
     }
 }
 
-#pragma mark - 时间电量刷新（原版完全不动）
+#pragma mark - 时间电量刷新【原版代码完全未修改】
 static void RefreshTimeBatteryLabel(void) {
     if (!g_timeBatteryLabel) return;
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
@@ -75,84 +80,81 @@ static void RefreshTimeBatteryLabel(void) {
 %end
 
 #pragma mark - 悬浮球手势逻辑
-static void setTapGestureEnable(UIView *ballView, BOOL enable) {
-    for(UIGestureRecognizer *ges in ballView.gestureRecognizers) {
-        if([ges isKindOfClass:[UITapGestureRecognizer class]]) {
-            UITapGestureRecognizer *tapGes = (UITapGestureRecognizer *)ges;
-            // 跳过我们自己新增的双击手势
-            if(tapGes.numberOfTapsRequired == 2) continue;
-            ges.enabled = enable;
-        }
-    }
-}
-
 %hook UIView
 %new
-// 长按：显示状态隐藏悬浮球
-- (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
+// ✅ 自定义长按：球显示状态 → 隐藏悬浮球，并且关闭自定义长按、单击震动
+- (void)customLongPressAction:(UILongPressGestureRecognizer *)gesture {
     if(gesture.state != UIGestureRecognizerStateBegan) return;
     UIView *floatBall = gesture.view;
     if(floatBall.alpha > 0.5f) {
         floatBall.alpha = 0.02f;
-        setTapGestureEnable(floatBall, NO);
+        // 隐藏后：关闭自定义长按 + 单击震动，只保留双击恢复
+        g_customLongPress.enabled = NO;
+        g_singleTapHaptic.enabled = NO;
+        g_doubleTapRestore.enabled = YES;
     }
 }
 
-// 双击恢复悬浮球
-- (void)restoreBallDoubleTap:(UITapGestureRecognizer *)gesture {
+// ✅ 单击震动：仅球显示时生效
+- (void)singleTapHapticAction:(UITapGestureRecognizer *)gesture {
+    UIView *floatBall = gesture.view;
+    if(floatBall.alpha > 0.5f) {
+        PlayStrongHaptic();
+    }
+}
+
+// ✅ 双击恢复悬浮球：恢复后，重新开启长按、单击震动，关闭双击手势
+- (void)doubleTapRestoreAction:(UITapGestureRecognizer *)gesture {
     UIView *floatBall = gesture.view;
     if(floatBall.alpha <= 0.5f) {
         floatBall.alpha = 1.0f;
-        setTapGestureEnable(floatBall, YES);
+        g_customLongPress.enabled = YES;
+        g_singleTapHaptic.enabled = YES;
+        g_doubleTapRestore.enabled = NO;
     }
 }
 
+// ✅ 保留你原版 didMoveToSuperview，不修改为layoutSubviews
 - (void)didMoveToSuperview {
     %orig;
     CGRect frm = self.frame;
-    // 悬浮球尺寸50 × 50
     if (!((int)frm.size.width == 50 && (int)frm.size.height == 50)) return;
 
-    // ✅ 先清理我们之前添加的手势，防止重复叠加
-    NSMutableArray *toRemove = [NSMutableArray array];
+    // 防止重复添加手势，先移除旧手势
+    NSMutableArray *removeList = [NSMutableArray array];
     for(UIGestureRecognizer *ges in self.gestureRecognizers) {
-        if([ges isKindOfClass:[UILongPressGestureRecognizer class]] ||
-           ([ges isKindOfClass:[UITapGestureRecognizer class]] && ((UITapGestureRecognizer *)ges).numberOfTapsRequired == 2)) {
-            [toRemove addObject:ges];
+        if([ges isKindOfClass:[UILongPressGestureRecognizer class]] || [ges isKindOfClass:[UITapGestureRecognizer class]]) {
+            [removeList addObject:ges];
         }
     }
-    for(UIGestureRecognizer *rGes in toRemove) {
+    for(UIGestureRecognizer *rGes in removeList) {
         [self removeGestureRecognizer:rGes];
     }
 
-    // 添加长按手势
-    UILongPressGestureRecognizer *longTap = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(tweakLongPressAction:)];
-    longTap.minimumPressDuration = 0.25;
-    longTap.cancelsTouchesInView = NO;
-    [self addGestureRecognizer:longTap];
+    // 创建全部手势
+    g_customLongPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(customLongPressAction:)];
+    g_customLongPress.minimumPressDuration = 0.25;
+    g_customLongPress.cancelsTouchesInView = NO;
 
-    // 添加双击恢复手势
-    UITapGestureRecognizer *doubleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(restoreBallDoubleTap:)];
-    doubleTap.numberOfTapsRequired = 2;
-    doubleTap.cancelsTouchesInView = NO;
-    [self addGestureRecognizer:doubleTap];
-}
-%end
+    g_singleTapHaptic = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(singleTapHapticAction:)];
+    g_singleTapHaptic.numberOfTapsRequired = 1;
+    g_singleTapHaptic.cancelsTouchesInView = NO;
 
-// ✅ 单击震动
-%hook UITapGestureRecognizer
-- (void)setState:(UIGestureRecognizerState)state {
-    %orig;
-    if(state != UIGestureRecognizerStateRecognized) return;
-    UIView *tapView = self.view;
-    if (!tapView) return;
-    CGRect frm = tapView.frame;
-    if (!([tapView isKindOfClass:[UIView class]] && (int)frm.size.width == 50 && (int)frm.size.height == 50)) return;
-    UITapGestureRecognizer *tapSelf = self;
-    if(tapSelf.numberOfTapsRequired != 1 || tapSelf.enabled == NO) return;
-    if(tapView.alpha <= 0.5f) return;
+    g_doubleTapRestore = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(doubleTapRestoreAction:)];
+    g_doubleTapRestore.numberOfTapsRequired = 2;
+    g_doubleTapRestore.cancelsTouchesInView = NO;
 
-    PlayStrongHaptic();
+    // 手势互斥：双击识别失败，才触发单击
+    [g_singleTapHaptic requireGestureRecognizerToFail:g_doubleTapRestore];
+
+    // 初始状态：悬浮球可见，开启长按、单击震动；关闭双击
+    g_customLongPress.enabled = YES;
+    g_singleTapHaptic.enabled = YES;
+    g_doubleTapRestore.enabled = NO;
+
+    [self addGestureRecognizer:g_customLongPress];
+    [self addGestureRecognizer:g_singleTapHaptic];
+    [self addGestureRecognizer:g_doubleTapRestore];
 }
 %end
 
