@@ -6,6 +6,7 @@
 static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
 static NSTimer *floatLabelRefreshTimer = nil;
+static UILabel *g_timeBatteryLabel = nil; // ✅ 全局缓存Label，只创建一次
 
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine != nil) return;
@@ -53,33 +54,14 @@ static void setTapGestureEnable(UIView *floatView, BOOL enable) {
     }
 }
 
-static UILabel* getTimeLabel(void) {
-    __block UILabel *resultLabel = nil;
-    for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
-        if (![scene isKindOfClass:[UIWindowScene class]]) continue;
-        for (UIWindow *win in scene.windows) {
-            __block void (^scanView)(UIView *) = nil;
-            scanView = ^(UIView *view) {
-                if (resultLabel) return;
-                if(view.tag == kCustomTimeBatteryTag) {
-                    resultLabel = (UILabel *)view;
-                    return;
-                }
-                for(UIView *sub in view.subviews) {
-                    scanView(sub);
-                }
-            };
-            scanView(win);
-            if(resultLabel) break;
-        }
-        if(resultLabel) break;
-    }
-    return resultLabel;
+// ✅ 直接返回缓存好的Label，不再遍历窗口查找
+static UILabel* GetTimeBatteryLabel(void) {
+    return g_timeBatteryLabel;
 }
 
 static void HideTimeBatteryLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        UILabel *lb = getTimeLabel();
+        UILabel *lb = GetTimeBatteryLabel();
         if(lb) {
             lb.hidden = YES;
             lb.layer.zPosition = -999;
@@ -89,7 +71,7 @@ static void HideTimeBatteryLabel(void) {
 
 static void ShowTimeBatteryLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        UILabel *lb = getTimeLabel();
+        UILabel *lb = GetTimeBatteryLabel();
         if(lb) {
             lb.hidden = NO;
             lb.layer.zPosition = 999;
@@ -143,13 +125,6 @@ static void RefreshFloatLabel(void) {
                             floatBall = view;
                         }
                     }
-                    if ([view isKindOfClass:[UILabel class]]) {
-                        UILabel *lb = (UILabel *)view;
-                        if(lb.textColor == [UIColor whiteColor] && [lb.text containsString:@":"]){
-                            lb.hidden = YES;
-                            lb.userInteractionEnabled = NO;
-                        }
-                    }
                     for(UIView *sub in view.subviews) {
                         scanView(sub);
                     }
@@ -161,29 +136,28 @@ static void RefreshFloatLabel(void) {
         }
         if(!floatBall) return;
         UIView *parentView = floatBall.superview;
-        UILabel *customLabel = (UILabel *)[parentView viewWithTag:kCustomTimeBatteryTag];
-        if (!customLabel) {
-            CGRect ballFrame = floatBall.frame;
-            CGRect labelFrame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
-            customLabel = [[UILabel alloc] initWithFrame:labelFrame];
-            customLabel.tag = kCustomTimeBatteryTag;
-            customLabel.font = [UIFont systemFontOfSize:22 weight:UIFontWeightMedium];
-            customLabel.textColor = [UIColor whiteColor];
-            customLabel.textAlignment = NSTextAlignmentCenter;
-            customLabel.backgroundColor = [UIColor clearColor];
-            customLabel.layer.zPosition = 999;
-            customLabel.userInteractionEnabled = NO;
-            [parentView addSubview:customLabel];
+        
+        // ✅ 如果Label还没有创建，一次性创建，之后永久复用
+        if (!g_timeBatteryLabel) {
+            g_timeBatteryLabel = [[UILabel alloc] init];
+            g_timeBatteryLabel.tag = kCustomTimeBatteryTag;
+            g_timeBatteryLabel.font = [UIFont systemFontOfSize:22 weight:UIFontWeightMedium];
+            g_timeBatteryLabel.textColor = [UIColor whiteColor];
+            g_timeBatteryLabel.textAlignment = NSTextAlignmentCenter;
+            g_timeBatteryLabel.backgroundColor = [UIColor clearColor];
+            g_timeBatteryLabel.layer.zPosition = 999;
+            g_timeBatteryLabel.userInteractionEnabled = NO;
+            [parentView addSubview:g_timeBatteryLabel];
         }
         CGRect ballFrame = floatBall.frame;
-        customLabel.frame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
+        g_timeBatteryLabel.frame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
         
         NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
         fmt.dateFormat = @"HH:mm";
         NSString *timeStr = [fmt stringFromDate:[NSDate date]];
         [UIDevice currentDevice].batteryMonitoringEnabled = YES;
         NSInteger bat = roundf([UIDevice currentDevice].batteryLevel * 100);
-        customLabel.text = [NSString stringWithFormat:@"%@ • %ld%%", timeStr, bat];
+        g_timeBatteryLabel.text = [NSString stringWithFormat:@"%@ • %ld%%", timeStr, bat];
     });
 }
 
@@ -191,17 +165,17 @@ static void RefreshFloatLabel(void) {
 %hook UIImageView
 %new
 - (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
-    // ========== 核心修复：只处理 Began 状态 ==========
+    // ========== 只处理 Began 长按识别成功状态 ==========
     if(gesture.state != UIGestureRecognizerStateBegan) {
         return;
     }
     UIView *floatView = self;
     if(floatView.alpha > 0.5f) {
-        // ✅ 长按识别成功瞬间：隐藏时间电量条，弹菜单
+        // ✅ 悬浮球可见长按：隐藏时间电量条，弹菜单
         HideTimeBatteryLabel();
         showVisibleMenu(floatView);
     } else {
-        // ✅ 悬浮球处于隐藏状态长按：直接恢复悬浮球，完全不动时间条
+        // ✅ 悬浮球处于隐藏状态长按：直接恢复悬浮球，时间条保持原样
         floatView.alpha = 1.0f;
         setTapGestureEnable(floatView, YES);
     }
