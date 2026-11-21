@@ -5,6 +5,7 @@
 
 static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
+static const NSInteger kNativeTimeHideTag = 998878;
 static NSTimer *floatLabelRefreshTimer = nil;
 static UILabel *g_timeBatteryLabel = nil;
 
@@ -65,6 +66,21 @@ static void HideTimeBatteryLabel(void) {
     });
 }
 
+// 递归遍历视图，隐藏原生时间Label
+static void HideNativeTimeLabel(UIView *rootView) {
+    for (UIView *sub in rootView.subviews) {
+        if ([sub isKindOfClass:[UILabel class]] && sub.tag != kCustomTimeBatteryTag && sub.tag != kNativeTimeHideTag) {
+            UILabel *lb = (UILabel *)sub;
+            // 特征：包含冒号，时间格式文本，就是原生时间
+            if ([lb.text containsString:@":"]) {
+                lb.hidden = YES;
+                lb.tag = kNativeTimeHideTag;
+            }
+        }
+        HideNativeTimeLabel(sub);
+    }
+}
+
 #pragma mark - 检测连点器原生选择面板 frame(0,0,200,32)
 static BOOL CheckPanelViewExist(void) {
     __block BOOL foundPanel = NO;
@@ -105,6 +121,7 @@ static void RefreshFloatLabel(void) {
         }
         
         __block UIView *floatBall = nil;
+        UIWindow *targetWindow = nil;
         for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
             if (![scene isKindOfClass:[UIWindowScene class]]) continue;
             for (UIWindow *win in scene.windows) {
@@ -113,6 +130,7 @@ static void RefreshFloatLabel(void) {
                     if ([view isKindOfClass:[UIImageView class]]) {
                         if ((int)view.bounds.size.width == 44 && (int)view.bounds.size.height ==44) {
                             floatBall = view;
+                            targetWindow = win;
                         }
                     }
                     for(UIView *sub in view.subviews) {
@@ -127,6 +145,11 @@ static void RefreshFloatLabel(void) {
         if(!floatBall) return;
         UIView *parentView = floatBall.superview;
         
+        // 新增：每次扫描，自动隐藏原生时间文字
+        if(targetWindow){
+            HideNativeTimeLabel(targetWindow);
+        }
+
         if (!g_timeBatteryLabel) {
             g_timeBatteryLabel = [[UILabel alloc] init];
             g_timeBatteryLabel.tag = kCustomTimeBatteryTag;
