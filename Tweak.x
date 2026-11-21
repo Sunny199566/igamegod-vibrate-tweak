@@ -81,6 +81,11 @@ static void showVisibleMenu(UIView *floatView) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     
     UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        // ==========【这里才触发隐藏！点击打开原生菜单按钮瞬间】==========
+        menuIsOpen = YES;
+        UILabel *lb = getTimeLabel();
+        if(lb) lb.hidden = YES;
+        
         for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
             if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
                 UILongPressGestureRecognizer *longGes = (UILongPressGestureRecognizer *)g;
@@ -92,7 +97,6 @@ static void showVisibleMenu(UIView *floatView) {
     }];
     
     UIAlertAction *hideBallAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        menuIsOpen = NO;
         showTimeLabel = YES;
         floatView.alpha = 0.02f;
         setTapGestureEnable(floatView, NO);
@@ -105,21 +109,16 @@ static void showVisibleMenu(UIView *floatView) {
     
     UIViewController *topVC = getTopViewController();
     if(topVC) {
-        // ✅ present 完成回调：弹窗已经完全弹出来，开启菜单标记，永久隐藏时间电量条
-        [topVC presentViewController:alert animated:YES completion:^{
-            menuIsOpen = YES;
-            UILabel *lb = getTimeLabel();
-            if(lb) lb.hidden = YES;
-        }];
+        // present弹窗阶段不再设置menuIsOpen，选择弹窗界面时间电量条正常显示！
+        [topVC presentViewController:alert animated:YES completion:nil];
     }
 }
 
-#pragma mark - 核心Hook：监听弹窗dismiss关闭事件，弹窗关闭之后才恢复显示
 %hook UIViewController
 - (void)dismissViewControllerAnimated:(BOOL)flag completion:(void (^)(void))completion {
     %orig;
-    // 本页面关闭，判定是我们的操作菜单，恢复显示时间电量条
     dispatch_async(dispatch_get_main_queue(), ^{
+        // 弹窗关闭，恢复显示时间电量条
         menuIsOpen = NO;
         UILabel *lb = getTimeLabel();
         if(lb) lb.hidden = NO;
@@ -176,7 +175,6 @@ static void RefreshFloatLabel(void) {
         CGRect ballFrame = floatBall.frame;
         customLabel.frame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
         
-        // ✅ menuIsOpen 为YES，定时器强制隐藏Label，不会被刷新覆盖
         if(menuIsOpen){
             customLabel.hidden = YES;
         }else{
