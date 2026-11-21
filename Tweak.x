@@ -83,62 +83,53 @@ static void RefreshLabel(void) {
 #pragma mark - 悬浮球Hook & 手势
 %hook UIImageView
 %new
+// 自定义短长按：仅悬浮球可见时生效，用来隐藏悬浮球
 - (void)shortLongPress:(UILongPressGestureRecognizer *)gest {
     if(gest.state != UIGestureRecognizerStateBegan) return;
     UIView *ball = self;
+    // ✅ 只有球显示状态，这个长按才执行隐藏逻辑
     if(ball.alpha > 0.5f) {
-        // 球可见：长按隐藏
         ball.alpha = 0.02f;
-    } else {
-        // 球隐藏：长按恢复
-        ball.alpha = 1.0f;
     }
 }
-- (void)doubleTapTriggerMenu:(UITapGestureRecognizer *)gest {
+
+// 隐藏状态单击：恢复悬浮球，不触发脚本震动
+- (void)tapRestoreBall:(UITapGestureRecognizer *)gest {
     UIView *ball = self;
-    if(ball.alpha > 0.5f) return;
-    // 仅隐藏状态双击唤起原生菜单
-    for(UIGestureRecognizer *ges in ball.gestureRecognizers) {
-        if([ges isKindOfClass:UILongPressGestureRecognizer.class]) {
-            UILongPressGestureRecognizer *longGes = (UILongPressGestureRecognizer *)ges;
-            longGes.state = UIGestureRecognizerStateBegan;
-            longGes.state = UIGestureRecognizerStateRecognized;
-            break;
-        }
+    // ✅ 仅隐藏状态生效
+    if(ball.alpha <= 0.5f) {
+        ball.alpha = 1.0f;
     }
-    g_menuShow = YES;
-    HideTimeBatLabel();
 }
 
 - (void)didMoveToWindow {
     %orig;
     UIView *view = self;
     if (!((int)view.bounds.size.width == 44 && (int)view.bounds.size.height == 44)) return;
-    BOOL hasLongTap = NO;
-    BOOL hasDoubleTap = NO;
+    BOOL hasShortLongTap = NO;
+    BOOL hasRestoreTap = NO;
     for(UIGestureRecognizer *g in view.gestureRecognizers) {
         if([g isKindOfClass:UILongPressGestureRecognizer.class]) {
             UILongPressGestureRecognizer *longG = (UILongPressGestureRecognizer *)g;
             if(longG.minimumPressDuration == 0.25) {
-                hasLongTap = YES;
+                hasShortLongTap = YES;
             }
         }
         if([g isKindOfClass:UITapGestureRecognizer.class]) {
             UITapGestureRecognizer *tapG = (UITapGestureRecognizer *)g;
-            if(tapG.numberOfTapsRequired == 2) {
-                hasDoubleTap = YES;
+            if(tapG.numberOfTapsRequired == 1 && tapG.delegate == self) {
+                hasRestoreTap = YES;
             }
         }
     }
-    if(!hasLongTap) {
+    if(!hasShortLongTap) {
         UILongPressGestureRecognizer *longG = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(shortLongPress:)];
         longG.minimumPressDuration = 0.25;
         [view addGestureRecognizer:longG];
     }
-    if(!hasDoubleTap) {
-        UITapGestureRecognizer *doubleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(doubleTapTriggerMenu:)];
-        doubleTap.numberOfTapsRequired = 2;
-        [view addGestureRecognizer:doubleTap];
+    if(!hasRestoreTap) {
+        UITapGestureRecognizer *singleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapRestoreBall:)];
+        [view addGestureRecognizer:singleTap];
     }
 }
 %end
@@ -164,6 +155,9 @@ static void RefreshLabel(void) {
     if (!([tapView isKindOfClass:UIImageView.class] && (int)tapView.bounds.size.width == 44 && (int)tapView.bounds.size.height == 44)) return;
     UITapGestureRecognizer *tapSelf = self;
     if(tapSelf.numberOfTapsRequired != 1 || tapSelf.enabled == NO) return;
+
+    // ✅ 只有悬浮球可见的时候，才执行脚本+震动；隐藏状态直接跳过
+    if(tapView.alpha <= 0.5f) return;
 
     if (@available(iOS 13.0, *)) {
         if (!sharedHapticEngine) {
