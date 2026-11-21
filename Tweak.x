@@ -81,7 +81,6 @@ static void showVisibleMenu(UIView *floatView) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     
     UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        // ==========【这里才触发隐藏！点击打开原生菜单按钮瞬间】==========
         menuIsOpen = YES;
         UILabel *lb = getTimeLabel();
         if(lb) lb.hidden = YES;
@@ -97,7 +96,7 @@ static void showVisibleMenu(UIView *floatView) {
     }];
     
     UIAlertAction *hideBallAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        showTimeLabel = YES;
+        // ✅ 隐藏悬浮球：仅把小球透明度调低，时间电量条保持显示，menuIsOpen状态不变
         floatView.alpha = 0.02f;
         setTapGestureEnable(floatView, NO);
     }];
@@ -109,22 +108,9 @@ static void showVisibleMenu(UIView *floatView) {
     
     UIViewController *topVC = getTopViewController();
     if(topVC) {
-        // present弹窗阶段不再设置menuIsOpen，选择弹窗界面时间电量条正常显示！
         [topVC presentViewController:alert animated:YES completion:nil];
     }
 }
-
-%hook UIViewController
-- (void)dismissViewControllerAnimated:(BOOL)flag completion:(void (^)(void))completion {
-    %orig;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        // 弹窗关闭，恢复显示时间电量条
-        menuIsOpen = NO;
-        UILabel *lb = getTimeLabel();
-        if(lb) lb.hidden = NO;
-    });
-}
-%end
 
 #pragma mark - 刷新逻辑
 static void RefreshFloatLabel(void) {
@@ -201,7 +187,13 @@ static void RefreshFloatLabel(void) {
     } else {
         floatView.alpha = 1.0f;
         setTapGestureEnable(floatView, YES);
-        showTimeLabel = YES;
+    }
+}
+
+// ✅ 核心：悬浮球重新加载到父视图（原生菜单关闭，小球重新出现），立刻恢复时间电量条，系统回调，0延时
+- (void)didMoveToSuperview {
+    %orig;
+    if (self.superview != nil) {
         menuIsOpen = NO;
         UILabel *lb = getTimeLabel();
         if(lb) lb.hidden = NO;
