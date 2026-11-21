@@ -96,38 +96,6 @@ static void HideTimeBatteryLabel(void) {
     });
 }
 
-static void showVisibleMenu(UIView *floatView) {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    
-    UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        HideTimeBatteryLabel();
-        
-        for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
-            if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
-                UILongPressGestureRecognizer *longGes = (UILongPressGestureRecognizer *)g;
-                longGes.state = UIGestureRecognizerStateBegan;
-                longGes.state = UIGestureRecognizerStateRecognized;
-                break;
-            }
-        }
-    }];
-    
-    UIAlertAction *hideBallAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        floatView.alpha = 0.02f;
-        setTapGestureEnable(floatView, NO);
-    }];
-    
-    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil];
-    [alert addAction:nativeMenuAction];
-    [alert addAction:hideBallAction];
-    [alert addAction:cancelAction];
-    
-    UIViewController *topVC = getTopViewController();
-    if(topVC) {
-        [topVC presentViewController:alert animated:YES completion:nil];
-    }
-}
-
 #pragma mark - 刷新逻辑
 static void RefreshFloatLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -176,7 +144,7 @@ static void RefreshFloatLabel(void) {
         CGRect ballFrame = floatBall.frame;
         customLabel.frame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
         
-        // ✅ 核心修复：菜单打开时，定时器不再修改hidden！只更新文字
+        // ✅ 定时器只在菜单关闭时打开文字，菜单打开状态完全不改动hidden属性
         if(!nativeMenuActive){
             customLabel.hidden = NO;
         }
@@ -190,84 +158,28 @@ static void RefreshFloatLabel(void) {
     });
 }
 
-#pragma mark - 悬浮球Hook
-%hook UIImageView
-%new
-- (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
-    if(gesture.state != UIGestureRecognizerStateBegan) return;
-    UIView *floatView = self;
-    if(floatView.alpha > 0.5f) {
-        showVisibleMenu(floatView);
-    } else {
-        floatView.alpha = 1.0f;
-        setTapGestureEnable(floatView, YES);
-    }
-}
-
-- (void)didMoveToWindow {
-    %orig;
-    UIView *view = self;
-    if (view.bounds.size.width == 44 && view.bounds.size.height ==44) {
-        BOOL hasCustomLongPress = NO;
-        for(UIGestureRecognizer *g in view.gestureRecognizers) {
-            if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
-                UILongPressGestureRecognizer *longG = (UILongPressGestureRecognizer *)g;
-                if(longG.minimumPressDuration == 0.35f) {
-                    hasCustomLongPress = YES;
-                    break;
-                }
-            }
-        }
-        if(!hasCustomLongPress) {
-            UILongPressGestureRecognizer *longTap = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(tweakLongPressAction:)];
-            longTap.minimumPressDuration = 0.35f;
-            [view addGestureRecognizer:longTap];
-        }
-    }
-}
-%end
-
-// Hook菜单View关闭事件
-%hook UIView
-- (void)removeFromSuperview {
-    %orig;
-    if(nativeMenuActive) {
-        RestoreTimeBatteryLabel();
-    }
-}
-%end
-
-%hook UITapGestureRecognizer
+// ✅ Hook悬浮球原生长按手势回调，这才是原生菜单触发点！
+%hook UILongPressGestureRecognizer
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
-    if(state == UIGestureRecognizerStateRecognized) {
-        UIView *tapView = self.view;
-        if (!tapView) return;
-        if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
-            UITapGestureRecognizer *tapSelf = self;
-            if(tapSelf.numberOfTapsRequired == 1 && tapSelf.enabled) {
-                if (@available(iOS 13.0, *)) {
-                    if (!sharedHapticEngine) {
-                        UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
-                        [gen prepare];
-                        [gen impactOccurred];
-                        return;
-                    }
-                    NSError *error = nil;
-                    CHHapticEventParameter *intensityParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0];
-                    CHHapticEventParameter *sharpnessParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:1.0];
-                    CHHapticEvent *event = [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous parameters:@[intensityParam, sharpnessParam] relativeTime:0 duration:0.6];
-                    CHHapticPattern *pattern = [[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&error];
-                    if (!error) {
-                        [sharedHapticEngine startAndReturnError:nil];
-                        id<CHHapticPatternPlayer> player = [sharedHapticEngine createPlayerWithPattern:pattern error:&error];
-                        if (!error) {
-                            [player startAtTime:0 error:&error];
-                        }
-                    }
-                }
-            }
+    UIView *targetView = self.view;
+    if (!targetView) return;
+    // 判断：目标是悬浮球（44x44 UIImageView）
+    if ([targetView isKindOfClass:[UIImageView class]] && (int)targetView.bounds.size.width ==44 && (int)targetView.bounds.size.height ==44) {
+        if(state == UIGestureRecognizerStateBegan) {
+            // ✅ 原生长按开始，立刻隐藏时间电量文字
+            HideTimeBatteryLabel();
         }
+    }
+}
+%end
+
+// ✅ Hook UIMenuController（原生菜单关闭事件），菜单消失恢复文字
+%hook UIMenuController
+- (void)setMenuVisible:(BOOL)menuVisible animated:(BOOL)animated {
+    %orig;
+    if(!menuVisible) {
+        RestoreTimeBatteryLabel();
     }
 }
 %end
