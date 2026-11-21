@@ -1,56 +1,9 @@
 #import <UIKit/UIKit.h>
 #import <dispatch/dispatch.h>
-#import <CoreHaptics/CoreHaptics.h>
 
-@protocol CHHapticPatternPlayer;
-static CHHapticEngine *sharedHapticEngine = nil;
 static UILabel *g_timeBatteryLabel = nil;
 static NSTimer *g_refreshTimer = nil;
 
-// 手势静态引用，用来动态开关
-static UILongPressGestureRecognizer *g_customLongPress = nil;
-static UITapGestureRecognizer *g_singleTapHaptic = nil;
-static UITapGestureRecognizer *g_doubleTapRestore = nil;
-
-#pragma mark - CoreHaptics 震动引擎
-static void InitHapticEngine(void) {
-    if (sharedHapticEngine) return;
-    if (@available(iOS 13.0, *)) {
-        if (!CHHapticEngine.capabilitiesForHardware.supportsHaptics) return;
-        NSError *err = nil;
-        sharedHapticEngine = [[CHHapticEngine alloc] initAndReturnError:&err];
-        if (err || !sharedHapticEngine) return;
-        sharedHapticEngine.resetHandler = ^{
-            [sharedHapticEngine startAndReturnError:nil];
-        };
-    }
-}
-
-#pragma mark - 强震动：强度1.0 / 锐度1.0 / 持续0.6s
-static void PlayStrongHaptic(void) {
-    if (@available(iOS 13.0, *)) {
-        if (!sharedHapticEngine) {
-            UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
-            [gen prepare];
-            [gen impactOccurred];
-            return;
-        }
-        NSError *err = nil;
-        CHHapticEventParameter *intensity = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0];
-        CHHapticEventParameter *sharpness = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:1.0];
-        CHHapticEvent *event = [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous parameters:@[intensity, sharpness] relativeTime:0 duration:0.6];
-        CHHapticPattern *pattern = [[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&err];
-        if (!err) {
-            [sharedHapticEngine startAndReturnError:nil];
-            id<CHHapticPatternPlayer> player = [sharedHapticEngine createPlayerWithPattern:pattern error:&err];
-            if (!err) {
-                [player startAtTime:0 error:&err];
-            }
-        }
-    }
-}
-
-#pragma mark - 时间电量刷新【原版代码完全未修改】
 static void RefreshTimeBatteryLabel(void) {
     if (!g_timeBatteryLabel) return;
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
@@ -66,6 +19,7 @@ static void RefreshTimeBatteryLabel(void) {
 - (void)didMoveToSuperview {
     %orig;
     CGRect frm = self.frame;
+    // 精准匹配你截图的控件：width=50 height=20
     if ((int)frm.size.width == 50 && (int)frm.size.height == 20 && !g_timeBatteryLabel) {
         g_timeBatteryLabel = self;
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -79,88 +33,64 @@ static void RefreshTimeBatteryLabel(void) {
 }
 %end
 
-#pragma mark - 悬浮球手势逻辑
+// ====== 原有悬浮球手势代码（长按0.25s版本）======
+static void setTapGestureEnable(UIView *ballView, BOOL enable) {
+    for(UIGestureRecognizer *ges in ballView.gestureRecognizers) {
+        if([ges isKindOfClass:[UITapGestureRecognizer class]]) {
+            ges.enabled = enable;
+        }
+    }
+}
+
 %hook UIView
 %new
-// ✅ 自定义长按：球显示状态 → 隐藏悬浮球，并且关闭自定义长按、单击震动
-- (void)customLongPressAction:(UILongPressGestureRecognizer *)gesture {
+- (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
     if(gesture.state != UIGestureRecognizerStateBegan) return;
     UIView *floatBall = gesture.view;
     if(floatBall.alpha > 0.5f) {
-        floatBall.alpha = 0.02f;
-        // 隐藏后：关闭自定义长按 + 单击震动，只保留双击恢复
-        g_customLongPress.enabled = NO;
-        g_singleTapHaptic.enabled = NO;
-        g_doubleTapRestore.enabled = YES;
-    }
-}
-
-// ✅ 单击震动：仅球显示时生效
-- (void)singleTapHapticAction:(UITapGestureRecognizer *)gesture {
-    UIView *floatBall = gesture.view;
-    if(floatBall.alpha > 0.5f) {
-        PlayStrongHaptic();
-    }
-}
-
-// ✅ 双击恢复悬浮球：恢复后，重新开启长按、单击震动，关闭双击手势
-- (void)doubleTapRestoreAction:(UITapGestureRecognizer *)gesture {
-    UIView *floatBall = gesture.view;
-    if(floatBall.alpha <= 0.5f) {
+        // 悬浮球可见，弹出菜单
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+        [alert addAction:[UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            // 原生菜单逻辑，按需自行补充
+        }]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+            floatBall.alpha = 0.02f;
+            setTapGestureEnable(floatBall, NO);
+        }]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+        UIViewController *rootVC = [UIApplication sharedApplication].keyWindow.rootViewController;
+        [rootVC presentViewController:alert animated:YES completion:nil];
+    } else {
+        // 悬浮球隐藏，恢复显示
         floatBall.alpha = 1.0f;
-        g_customLongPress.enabled = YES;
-        g_singleTapHaptic.enabled = YES;
-        g_doubleTapRestore.enabled = NO;
+        setTapGestureEnable(floatBall, YES);
     }
 }
 
-// ✅ 保留你原版 didMoveToSuperview，不修改为layoutSubviews
 - (void)didMoveToSuperview {
     %orig;
     CGRect frm = self.frame;
-    if (!((int)frm.size.width == 50 && (int)frm.size.height == 50)) return;
-
-    // 防止重复添加手势，先移除旧手势
-    NSMutableArray *removeList = [NSMutableArray array];
-    for(UIGestureRecognizer *ges in self.gestureRecognizers) {
-        if([ges isKindOfClass:[UILongPressGestureRecognizer class]] || [ges isKindOfClass:[UITapGestureRecognizer class]]) {
-            [removeList addObject:ges];
+    // 悬浮球尺寸判断，根据你实际圆球大小，这里示例，可按需修改
+    if ((int)frm.size.width == 50 && (int)frm.size.height == 50) {
+        BOOL hasLongPress = NO;
+        for(UIGestureRecognizer *ges in self.gestureRecognizers) {
+            if([ges isKindOfClass:[UILongPressGestureRecognizer class]]) {
+                UILongPressGestureRecognizer *lpGes = (UILongPressGestureRecognizer *)ges;
+                if(lpGes.minimumPressDuration == 0.25f) {
+                    hasLongPress = YES;
+                    break;
+                }
+            }
+        }
+        if(!hasLongPress) {
+            UILongPressGestureRecognizer *longTap = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(tweakLongPressAction:)];
+            longTap.minimumPressDuration = 0.25f;
+            [self addGestureRecognizer:longTap];
         }
     }
-    for(UIGestureRecognizer *rGes in removeList) {
-        [self removeGestureRecognizer:rGes];
-    }
-
-    // 创建全部手势
-    g_customLongPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(customLongPressAction:)];
-    g_customLongPress.minimumPressDuration = 0.25;
-    g_customLongPress.cancelsTouchesInView = NO;
-
-    g_singleTapHaptic = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(singleTapHapticAction:)];
-    g_singleTapHaptic.numberOfTapsRequired = 1;
-    g_singleTapHaptic.cancelsTouchesInView = NO;
-
-    g_doubleTapRestore = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(doubleTapRestoreAction:)];
-    g_doubleTapRestore.numberOfTapsRequired = 2;
-    g_doubleTapRestore.cancelsTouchesInView = NO;
-
-    // 手势互斥：双击识别失败，才触发单击
-    [g_singleTapHaptic requireGestureRecognizerToFail:g_doubleTapRestore];
-
-    // 初始状态：悬浮球可见，开启长按、单击震动；关闭双击
-    g_customLongPress.enabled = YES;
-    g_singleTapHaptic.enabled = YES;
-    g_doubleTapRestore.enabled = NO;
-
-    [self addGestureRecognizer:g_customLongPress];
-    [self addGestureRecognizer:g_singleTapHaptic];
-    [self addGestureRecognizer:g_doubleTapRestore];
 }
 %end
 
 %ctor {
     %init();
-    dispatch_async(dispatch_get_main_queue(), ^{
-        InitHapticEngine();
-    });
 }
