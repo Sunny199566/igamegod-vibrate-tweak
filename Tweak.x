@@ -80,7 +80,21 @@ static void RestoreTimeBatteryLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         nativeMenuActive = NO;
         UILabel *lb = getTimeLabel();
-        if(lb) lb.hidden = NO;
+        if(lb) {
+            lb.hidden = NO;
+            lb.layer.zPosition = 999;
+        }
+    });
+}
+
+static void HideTimeBatteryLabel(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        nativeMenuActive = YES;
+        UILabel *lb = getTimeLabel();
+        if(lb) {
+            lb.hidden = YES;
+            lb.layer.zPosition = -999;
+        }
     });
 }
 
@@ -88,9 +102,7 @@ static void showVisibleMenu(UIView *floatView) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     
     UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        nativeMenuActive = YES;
-        UILabel *lb = getTimeLabel();
-        if(lb) lb.hidden = YES;
+        HideTimeBatteryLabel();
         
         for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
             if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
@@ -167,7 +179,13 @@ static void RefreshFloatLabel(void) {
         CGRect ballFrame = floatBall.frame;
         customLabel.frame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
         
+        // 核心！严格跟随nativeMenuActive状态
         customLabel.hidden = nativeMenuActive;
+        if(!nativeMenuActive) {
+            customLabel.layer.zPosition = 999;
+        } else {
+            customLabel.layer.zPosition = -999;
+        }
         
         NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
         fmt.dateFormat = @"HH:mm";
@@ -215,12 +233,11 @@ static void RefreshFloatLabel(void) {
 }
 %end
 
-// ✅ 核心Hook：菜单View被移除（关闭菜单）瞬间触发恢复，无轮询
+// Hook菜单View关闭事件
 %hook UIView
 - (void)removeFromSuperview {
     %orig;
     if(nativeMenuActive) {
-        // 正方形菜单关闭，恢复时间电量条
         RestoreTimeBatteryLabel();
     }
 }
