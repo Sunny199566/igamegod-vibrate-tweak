@@ -5,7 +5,7 @@ static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
 static NSTimer *floatLabelRefreshTimer = nil;
 static BOOL showTimeLabel = YES;
-static BOOL menuIsOpen = NO; // ✅新增：菜单开启标记，定时器优先读取这个
+static BOOL menuIsOpen = NO;
 
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine != nil) return;
@@ -81,11 +81,6 @@ static void showVisibleMenu(UIView *floatView) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     
     UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        // ✅ 设置菜单打开标记！定时器看到这个标记，就会持续隐藏Label，不会被刷新覆盖
-        menuIsOpen = YES;
-        UILabel *lb = getTimeLabel();
-        if(lb) lb.hidden = YES;
-        
         for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
             if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
                 UILongPressGestureRecognizer *longGes = (UILongPressGestureRecognizer *)g;
@@ -94,13 +89,6 @@ static void showVisibleMenu(UIView *floatView) {
                 break;
             }
         }
-
-        // 延时关闭标记，菜单操作完成之后恢复显示
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            menuIsOpen = NO;
-            UILabel *label = getTimeLabel();
-            if(label) label.hidden = NO;
-        });
     }];
     
     UIAlertAction *hideBallAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
@@ -117,11 +105,29 @@ static void showVisibleMenu(UIView *floatView) {
     
     UIViewController *topVC = getTopViewController();
     if(topVC) {
-        [topVC presentViewController:alert animated:YES completion:nil];
+        // ✅ present 完成回调：弹窗已经完全弹出来，开启菜单标记，永久隐藏时间电量条
+        [topVC presentViewController:alert animated:YES completion:^{
+            menuIsOpen = YES;
+            UILabel *lb = getTimeLabel();
+            if(lb) lb.hidden = YES;
+        }];
     }
 }
 
-#pragma mark - 刷新逻辑【核心修改】
+#pragma mark - 核心Hook：监听弹窗dismiss关闭事件，弹窗关闭之后才恢复显示
+%hook UIViewController
+- (void)dismissViewControllerAnimated:(BOOL)flag completion:(void (^)(void))completion {
+    %orig;
+    // 本页面关闭，判定是我们的操作菜单，恢复显示时间电量条
+    dispatch_async(dispatch_get_main_queue(), ^{
+        menuIsOpen = NO;
+        UILabel *lb = getTimeLabel();
+        if(lb) lb.hidden = NO;
+    });
+}
+%end
+
+#pragma mark - 刷新逻辑
 static void RefreshFloatLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         __block UIView *floatBall = nil;
@@ -170,7 +176,7 @@ static void RefreshFloatLabel(void) {
         CGRect ballFrame = floatBall.frame;
         customLabel.frame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
         
-        // ✅ 优先级：menuIsOpen > showTimeLabel。菜单打开，强制隐藏，定时器不会覆盖！
+        // ✅ menuIsOpen 为YES，定时器强制隐藏Label，不会被刷新覆盖
         if(menuIsOpen){
             customLabel.hidden = YES;
         }else{
