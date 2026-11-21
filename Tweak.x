@@ -6,6 +6,7 @@ static const NSInteger kCustomTimeBatteryTag = 998877;
 static NSTimer *floatLabelRefreshTimer = nil;
 static BOOL showTimeLabel = YES;
 static BOOL menuIsOpen = NO;
+static BOOL enteringNativeMenu = NO; // 新增标记：正在打开原生菜单
 
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine != nil) return;
@@ -81,6 +82,8 @@ static void showVisibleMenu(UIView *floatView) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     
     UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        // ✅ 打开原生菜单，立刻标记 + 隐藏时间条
+        enteringNativeMenu = YES;
         menuIsOpen = YES;
         UILabel *lb = getTimeLabel();
         if(lb) lb.hidden = YES;
@@ -96,7 +99,6 @@ static void showVisibleMenu(UIView *floatView) {
     }];
     
     UIAlertAction *hideBallAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        // ✅ 隐藏悬浮球：仅把小球透明度调低，时间电量条保持显示，menuIsOpen状态不变
         floatView.alpha = 0.02f;
         setTapGestureEnable(floatView, NO);
     }];
@@ -190,10 +192,11 @@ static void RefreshFloatLabel(void) {
     }
 }
 
-// ✅ 核心：悬浮球重新加载到父视图（原生菜单关闭，小球重新出现），立刻恢复时间电量条，系统回调，0延时
 - (void)didMoveToSuperview {
     %orig;
-    if (self.superview != nil) {
+    // ✅ 仅在【从原生菜单返回，重新挂载视图】的时候恢复，打开菜单阶段跳过重置
+    if (self.superview != nil && enteringNativeMenu) {
+        enteringNativeMenu = NO;
         menuIsOpen = NO;
         UILabel *lb = getTimeLabel();
         if(lb) lb.hidden = NO;
