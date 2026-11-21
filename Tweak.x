@@ -76,22 +76,12 @@ static UILabel* getTimeLabel(void) {
     return resultLabel;
 }
 
-// 窗口隐藏通知回调，菜单窗口关闭事件触发恢复
-static void MenuWindowHiddenCallback(NSNotification *noti) {
-    if (!nativeMenuActive) return;
-    UIWindow *win = noti.object;
-    // 判断：非全屏窗口=原生辅助触控菜单
-    if (!CGRectEqualToRect(win.bounds, [UIScreen mainScreen].bounds)) {
+static void RestoreTimeBatteryLabel(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
         nativeMenuActive = NO;
         UILabel *lb = getTimeLabel();
         if(lb) lb.hidden = NO;
-        // 移除监听，一次性使用
-        [[NSNotificationCenter defaultCenter] removeObserver:[NSNotificationCenter defaultCenter] name:UIWindowDidBecomeHiddenNotification object:nil];
-    }
-}
-
-static void RegisterMenuCloseObserver(void) {
-    [[NSNotificationCenter defaultCenter] addObserverForName:UIWindowDidBecomeHiddenNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:MenuWindowHiddenCallback];
+    });
 }
 
 static void showVisibleMenu(UIView *floatView) {
@@ -101,8 +91,6 @@ static void showVisibleMenu(UIView *floatView) {
         nativeMenuActive = YES;
         UILabel *lb = getTimeLabel();
         if(lb) lb.hidden = YES;
-        // 注册窗口关闭监听（事件驱动，无轮询）
-        RegisterMenuCloseObserver();
         
         for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
             if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
@@ -223,6 +211,17 @@ static void RefreshFloatLabel(void) {
             longTap.minimumPressDuration = 0.35f;
             [view addGestureRecognizer:longTap];
         }
+    }
+}
+%end
+
+// ✅ 核心Hook：菜单View被移除（关闭菜单）瞬间触发恢复，无轮询
+%hook UIView
+- (void)removeFromSuperview {
+    %orig;
+    if(nativeMenuActive) {
+        // 正方形菜单关闭，恢复时间电量条
+        RestoreTimeBatteryLabel();
     }
 }
 %end
