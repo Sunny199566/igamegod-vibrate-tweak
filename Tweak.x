@@ -26,11 +26,6 @@ static void InitHapticEngine(void) {
 }
 
 #pragma mark - 时间电量条控制
-static void HideTimeBatLabel(void) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if(g_timeBatLabel) g_timeBatLabel.hidden = YES;
-    });
-}
 static void ShowTimeBatLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if(g_timeBatLabel) g_timeBatLabel.hidden = NO;
@@ -109,7 +104,7 @@ static void RefreshLabel(void) {
     UIView *view = self;
     if (!((int)view.bounds.size.width == 44 && (int)view.bounds.size.height == 44)) return;
 
-    // 只创建一次手势，全局保存指针，不再遍历判断tag
+    // 只创建一次手势，全局保存指针
     if (!g_shortLongGesture) {
         g_shortLongGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(shortLongPress:)];
         g_shortLongGesture.minimumPressDuration = 0.25;
