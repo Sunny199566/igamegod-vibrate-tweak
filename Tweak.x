@@ -4,7 +4,6 @@
 static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
 static NSTimer *floatLabelRefreshTimer = nil;
-static NSTimer *menuWatchTimer = nil;
 static BOOL showTimeLabel = YES;
 
 static void SetupHapticEngine(void) {
@@ -77,24 +76,11 @@ static UILabel* getTimeLabel(void) {
     return resultLabel;
 }
 
-// 检测是否存在原生菜单弹窗窗口
-static BOOL isNativeMenuPresent(void) {
-    for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
-        if (![scene isKindOfClass:[UIWindowScene class]]) continue;
-        for (UIWindow *win in scene.windows) {
-            // 这里可以根据iGameGod弹窗窗口特征判断，大部分悬浮修改器弹窗window层级很高
-            if (!win.isKeyWindow && win.rootViewController && !win.hidden && win.alpha > 0) {
-                return YES;
-            }
-        }
-    }
-    return NO;
-}
-
 static void showVisibleMenu(UIView *floatView) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     
     UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        // 立刻隐藏时间电量条
         UILabel *lb = getTimeLabel();
         if(lb) lb.hidden = YES;
         showTimeLabel = NO;
@@ -108,24 +94,15 @@ static void showVisibleMenu(UIView *floatView) {
             }
         }
 
-        // ✅ 轮询监控：菜单关闭之后才恢复显示
-        if(menuWatchTimer) [menuWatchTimer invalidate];
-        menuWatchTimer = [NSTimer scheduledTimerWithTimeInterval:0.2 repeats:YES block:^(NSTimer * _Nonnull timer) {
-            if (!isNativeMenuPresent()) {
-                showTimeLabel = YES;
-                UILabel *label = getTimeLabel();
-                if(label) label.hidden = NO;
-                [timer invalidate];
-                menuWatchTimer = nil;
-            }
-        }];
+        // ✅ 稳定0.3s短时延时，足够操作菜单，几乎感知不到延迟，不会卡死永久隐藏
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            showTimeLabel = YES;
+            UILabel *label = getTimeLabel();
+            if(label) label.hidden = NO;
+        });
     }];
     
     UIAlertAction *hideBallAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        if(menuWatchTimer) {
-            [menuWatchTimer invalidate];
-            menuWatchTimer = nil;
-        }
         showTimeLabel = YES;
         floatView.alpha = 0.02f;
         setTapGestureEnable(floatView, NO);
@@ -215,10 +192,6 @@ static void RefreshFloatLabel(void) {
         showTimeLabel = YES;
         UILabel *lb = getTimeLabel();
         if(lb) lb.hidden = NO;
-        if(menuWatchTimer) {
-            [menuWatchTimer invalidate];
-            menuWatchTimer = nil;
-        }
     }
 }
 
