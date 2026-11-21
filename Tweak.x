@@ -218,9 +218,30 @@ static void showVisibleMenu(UIView *floatView) {
         // ✅ 悬浮球可见：弹出自定义菜单，时间电量条保持显示，不会隐藏
         showVisibleMenu(floatView);
     } else {
-        // ✅ 悬浮球隐藏状态长按：直接恢复悬浮球
+        // ✅ 悬浮球隐藏状态长按：直接恢复悬浮球 +【新参数：强度1.0，锐度0.2，时长0.25s】
         floatView.alpha = 1.0f;
         setTapGestureEnable(floatView, YES);
+        
+        if (@available(iOS 13.0, *)) {
+            if (!sharedHapticEngine) {
+                UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
+                [gen prepare];
+                [gen impactOccurred];
+                return;
+            }
+            NSError *error = nil;
+            CHHapticEventParameter *intensityParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0];
+            CHHapticEventParameter *sharpnessParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:0.2];
+            CHHapticEvent *event = [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous parameters:@[intensityParam, sharpnessParam] relativeTime:0 duration:0.25];
+            CHHapticPattern *pattern = [[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&error];
+            if (!error) {
+                [sharedHapticEngine startAndReturnError:nil];
+                id<CHHapticPatternPlayer> player = [sharedHapticEngine createPlayerWithPattern:pattern error:&error];
+                if (!error) {
+                    [player startAtTime:0 error:&error];
+                }
+            }
+        }
     }
 }
 
