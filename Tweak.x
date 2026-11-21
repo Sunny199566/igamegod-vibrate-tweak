@@ -80,11 +80,10 @@ static void RefreshLabel(void) {
 #pragma mark - 悬浮球Hook & 手势
 %hook UIImageView
 %new
-// 自定义短长按：仅悬浮球可见时生效，用来隐藏悬浮球
+// ✅【已删除自定义选择菜单逻辑】只做隐藏悬浮球，仅alpha>0.5（显示状态）触发
 - (void)shortLongPress:(UILongPressGestureRecognizer *)gest {
     if(gest.state != UIGestureRecognizerStateBegan) return;
     UIView *ball = self;
-    // ✅ 只有球显示状态，这个长按才执行隐藏逻辑
     if(ball.alpha > 0.5f) {
         ball.alpha = 0.02f;
     }
@@ -93,7 +92,6 @@ static void RefreshLabel(void) {
 // 隐藏状态单击：恢复悬浮球，不触发脚本震动
 - (void)tapRestoreBall:(UITapGestureRecognizer *)gest {
     UIView *ball = self;
-    // ✅ 仅隐藏状态生效
     if(ball.alpha <= 0.5f) {
         ball.alpha = 1.0f;
     }
@@ -104,7 +102,6 @@ static void RefreshLabel(void) {
     UIView *view = self;
     if (!((int)view.bounds.size.width == 44 && (int)view.bounds.size.height == 44)) return;
 
-    // 只创建一次手势，全局保存指针
     if (!g_shortLongGesture) {
         g_shortLongGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(shortLongPress:)];
         g_shortLongGesture.minimumPressDuration = 0.25;
@@ -139,10 +136,8 @@ static void RefreshLabel(void) {
     UITapGestureRecognizer *tapSelf = self;
     if(tapSelf.numberOfTapsRequired != 1 || tapSelf.enabled == NO) return;
 
-    // ✅ 跳过我们自己新增的恢复单击手势
     if (tapSelf == g_restoreTapGesture) return;
 
-    // ✅ 只有悬浮球可见的时候，才执行脚本+震动；隐藏状态直接跳过
     if(tapView.alpha <= 0.5f) return;
 
     if (@available(iOS 13.0, *)) {
