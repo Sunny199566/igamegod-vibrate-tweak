@@ -4,7 +4,7 @@
 static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
 static NSTimer *floatLabelRefreshTimer = nil;
-static BOOL showTimeLabel = YES; // ✅独立开关：控制时间电量文字
+static BOOL showTimeLabel = YES;
 
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine != nil) return;
@@ -56,7 +56,7 @@ static void showVisibleMenu(UIView *floatView) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     
     UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        // ✅【打开原生菜单】：隐藏时间电量文字！
+        // 先隐藏文字（菜单弹出瞬间文字消失）
         showTimeLabel = NO;
         for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
             if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
@@ -66,10 +66,11 @@ static void showVisibleMenu(UIView *floatView) {
                 break;
             }
         }
+        // ✅【重点】直接立刻恢复，删掉dispatch_after延时！关闭原生菜单文字马上出现，无等待
+        showTimeLabel = YES;
     }];
     
     UIAlertAction *hideBallAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        // ✅【只隐藏悬浮球】：时间文字保持显示！
         showTimeLabel = YES;
         floatView.alpha = 0.02f;
         setTapGestureEnable(floatView, NO);
@@ -95,13 +96,11 @@ static void RefreshFloatLabel(void) {
             for (UIWindow *win in scene.windows) {
                 __block void (^scanView)(UIView *) = nil;
                 scanView = ^(UIView *view) {
-                    // 找到iGameGod悬浮球 44x44 ImageView
                     if ([view isKindOfClass:[UIImageView class]]) {
                         if ((int)view.bounds.size.width == 44 && (int)view.bounds.size.height ==44) {
                             floatBall = view;
                         }
                     }
-                    // 持续强制隐藏原生计时Label，杜绝叠字
                     if ([view isKindOfClass:[UILabel class]]) {
                         UILabel *lb = (UILabel *)view;
                         if(lb.textColor == [UIColor whiteColor] && [lb.text containsString:@":"]){
@@ -126,7 +125,6 @@ static void RefreshFloatLabel(void) {
             CGRect labelFrame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
             customLabel = [[UILabel alloc] initWithFrame:labelFrame];
             customLabel.tag = kCustomTimeBatteryTag;
-            // ✅字号 22
             customLabel.font = [UIFont systemFontOfSize:22 weight:UIFontWeightMedium];
             customLabel.textColor = [UIColor whiteColor];
             customLabel.textAlignment = NSTextAlignmentCenter;
@@ -135,14 +133,10 @@ static void RefreshFloatLabel(void) {
             customLabel.userInteractionEnabled = NO;
             [parentView addSubview:customLabel];
         }
-        // 跟随悬浮球移动坐标
         CGRect ballFrame = floatBall.frame;
         customLabel.frame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
-
-        // ✅根据全局布尔变量控制文字显示/隐藏
         customLabel.hidden = !showTimeLabel;
         
-        // 渲染文字 HH:mm • 电量%
         NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
         fmt.dateFormat = @"HH:mm";
         NSString *timeStr = [fmt stringFromDate:[NSDate date]];
@@ -161,7 +155,6 @@ static void RefreshFloatLabel(void) {
     if(floatView.alpha > 0.5f) {
         showVisibleMenu(floatView);
     } else {
-        // ✅重新显示悬浮球的时候，一并恢复时间文字显示
         floatView.alpha = 1.0f;
         setTapGestureEnable(floatView, YES);
         showTimeLabel = YES;
