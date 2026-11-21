@@ -4,9 +4,9 @@
 @protocol CHHapticPatternPlayer;
 
 static CHHapticEngine *sharedHapticEngine = nil;
+static UILongPressGestureRecognizer *g_shortLongGesture = nil;
+static UITapGestureRecognizer *g_restoreTapGesture = nil;
 static const NSInteger kTimeBatteryTag = 998877;
-static const NSInteger kRestoreTapTag = 10001;
-static const NSInteger kShortLongTag = 10002;
 static NSTimer *labelRefreshTimer = nil;
 static UILabel *g_timeBatLabel = nil;
 static BOOL g_menuShow = NO;
@@ -108,22 +108,16 @@ static void RefreshLabel(void) {
     %orig;
     UIView *view = self;
     if (!((int)view.bounds.size.width == 44 && (int)view.bounds.size.height == 44)) return;
-    BOOL hasShortLongTap = NO;
-    BOOL hasRestoreTap = NO;
-    for(UIGestureRecognizer *g in view.gestureRecognizers) {
-        if(g.tag == kShortLongTag) hasShortLongTap = YES;
-        if(g.tag == kRestoreTapTag) hasRestoreTap = YES;
+
+    // 只创建一次手势，全局保存指针，不再遍历判断tag
+    if (!g_shortLongGesture) {
+        g_shortLongGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(shortLongPress:)];
+        g_shortLongGesture.minimumPressDuration = 0.25;
+        [view addGestureRecognizer:g_shortLongGesture];
     }
-    if(!hasShortLongTap) {
-        UILongPressGestureRecognizer *longG = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(shortLongPress:)];
-        longG.minimumPressDuration = 0.25;
-        longG.tag = kShortLongTag;
-        [view addGestureRecognizer:longG];
-    }
-    if(!hasRestoreTap) {
-        UITapGestureRecognizer *singleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapRestoreBall:)];
-        singleTap.tag = kRestoreTapTag;
-        [view addGestureRecognizer:singleTap];
+    if (!g_restoreTapGesture) {
+        g_restoreTapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapRestoreBall:)];
+        [view addGestureRecognizer:g_restoreTapGesture];
     }
 }
 %end
@@ -149,8 +143,9 @@ static void RefreshLabel(void) {
     if (!([tapView isKindOfClass:UIImageView.class] && (int)tapView.bounds.size.width == 44 && (int)tapView.bounds.size.height == 44)) return;
     UITapGestureRecognizer *tapSelf = self;
     if(tapSelf.numberOfTapsRequired != 1 || tapSelf.enabled == NO) return;
-    // 跳过我们自己添加的【恢复球单击手势】，只捕获原生单击脚本手势
-    if(tapSelf.tag == kRestoreTapTag) return;
+
+    // ✅ 跳过我们自己新增的恢复单击手势
+    if (tapSelf == g_restoreTapGesture) return;
 
     // ✅ 只有悬浮球可见的时候，才执行脚本+震动；隐藏状态直接跳过
     if(tapView.alpha <= 0.5f) return;
