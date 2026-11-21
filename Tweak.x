@@ -6,7 +6,6 @@
 static CHHapticEngine *sharedHapticEngine = nil;
 static UILabel *g_timeBatteryLabel = nil;
 static NSTimer *g_refreshTimer = nil;
-static UITapGestureRecognizer *g_restoreDoubleTap = nil;
 
 #pragma mark - CoreHaptics 震动引擎初始化
 static void InitHapticEngine(void) {
@@ -46,7 +45,7 @@ static void PlayStrongHaptic(void) {
     }
 }
 
-#pragma mark - 时间电量刷新（原版逻辑完全未修改）
+#pragma mark - 时间电量刷新（原版完全不动）
 static void RefreshTimeBatteryLabel(void) {
     if (!g_timeBatteryLabel) return;
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
@@ -78,7 +77,10 @@ static void RefreshTimeBatteryLabel(void) {
 #pragma mark - 悬浮球手势逻辑
 static void setTapGestureEnable(UIView *ballView, BOOL enable) {
     for(UIGestureRecognizer *ges in ballView.gestureRecognizers) {
-        if([ges isKindOfClass:[UITapGestureRecognizer class]] && ges != g_restoreDoubleTap) {
+        if([ges isKindOfClass:[UITapGestureRecognizer class]]) {
+            UITapGestureRecognizer *tapGes = (UITapGestureRecognizer *)ges;
+            // 跳过我们自己新增的双击手势
+            if(tapGes.numberOfTapsRequired == 2) continue;
             ges.enabled = enable;
         }
     }
@@ -86,7 +88,7 @@ static void setTapGestureEnable(UIView *ballView, BOOL enable) {
 
 %hook UIView
 %new
-// 长按逻辑：显示状态长按隐藏，隐藏状态放行原生菜单
+// 长按：显示状态隐藏悬浮球
 - (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
     if(gesture.state != UIGestureRecognizerStateBegan) return;
     UIView *floatBall = gesture.view;
@@ -96,7 +98,7 @@ static void setTapGestureEnable(UIView *ballView, BOOL enable) {
     }
 }
 
-// ✅ 修改为【双击】恢复悬浮球
+// 双击恢复悬浮球
 - (void)restoreBallDoubleTap:(UITapGestureRecognizer *)gesture {
     UIView *floatBall = gesture.view;
     if(floatBall.alpha <= 0.5f) {
@@ -108,34 +110,36 @@ static void setTapGestureEnable(UIView *ballView, BOOL enable) {
 - (void)didMoveToSuperview {
     %orig;
     CGRect frm = self.frame;
-    // 原版悬浮球判断：50 × 50
-    if ((int)frm.size.width == 50 && (int)frm.size.height == 50) {
-        BOOL hasLongPress = NO;
-        for(UIGestureRecognizer *ges in self.gestureRecognizers) {
-            if([ges isKindOfClass:[UILongPressGestureRecognizer class]]) {
-                UILongPressGestureRecognizer *lpGes = (UILongPressGestureRecognizer *)ges;
-                if(lpGes.minimumPressDuration == 0.25f) {
-                    hasLongPress = YES;
-                    break;
-                }
-            }
-        }
-        if(!hasLongPress) {
-            UILongPressGestureRecognizer *longTap = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(tweakLongPressAction:)];
-            longTap.minimumPressDuration = 0.25f;
-            [self addGestureRecognizer:longTap];
-        }
-        // ✅ 双击手势 numberOfTapsRequired = 2
-        if(!g_restoreDoubleTap) {
-            g_restoreDoubleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(restoreBallDoubleTap:)];
-            g_restoreDoubleTap.numberOfTapsRequired = 2;
-            [self addGestureRecognizer:g_restoreDoubleTap];
+    // 悬浮球尺寸50 × 50
+    if (!((int)frm.size.width == 50 && (int)frm.size.height == 50)) return;
+
+    // ✅ 先清理我们之前添加的手势，防止重复叠加
+    NSMutableArray *toRemove = [NSMutableArray array];
+    for(UIGestureRecognizer *ges in self.gestureRecognizers) {
+        if([ges isKindOfClass:[UILongPressGestureRecognizer class]] ||
+           ([ges isKindOfClass:[UITapGestureRecognizer class]] && ((UITapGestureRecognizer *)ges).numberOfTapsRequired == 2)) {
+            [toRemove addObject:ges];
         }
     }
+    for(UIGestureRecognizer *rGes in toRemove) {
+        [self removeGestureRecognizer:rGes];
+    }
+
+    // 添加长按手势
+    UILongPressGestureRecognizer *longTap = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(tweakLongPressAction:)];
+    longTap.minimumPressDuration = 0.25;
+    longTap.cancelsTouchesInView = NO;
+    [self addGestureRecognizer:longTap];
+
+    // 添加双击恢复手势
+    UITapGestureRecognizer *doubleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(restoreBallDoubleTap:)];
+    doubleTap.numberOfTapsRequired = 2;
+    doubleTap.cancelsTouchesInView = NO;
+    [self addGestureRecognizer:doubleTap];
 }
 %end
 
-// ✅ Hook原生单击手势，悬浮球可见时触发高级震动
+// ✅ 单击震动
 %hook UITapGestureRecognizer
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
@@ -146,10 +150,6 @@ static void setTapGestureEnable(UIView *ballView, BOOL enable) {
     if (!([tapView isKindOfClass:[UIView class]] && (int)frm.size.width == 50 && (int)frm.size.height == 50)) return;
     UITapGestureRecognizer *tapSelf = self;
     if(tapSelf.numberOfTapsRequired != 1 || tapSelf.enabled == NO) return;
-
-    // 跳过我们自己添加的双击手势
-    if (tapSelf == g_restoreDoubleTap) return;
-    // 只有悬浮球显示的时候才震动
     if(tapView.alpha <= 0.5f) return;
 
     PlayStrongHaptic();
