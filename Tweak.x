@@ -1,6 +1,8 @@
 #import <UIKit/UIKit.h>
 #import <CoreHaptics/CoreHaptics.h>
 
+@protocol CHHapticPatternPlayer;
+
 static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
 static NSTimer *floatLabelRefreshTimer = nil;
@@ -22,18 +24,34 @@ static void SetupHapticEngine(void) {
     }
 }
 
-// ========== 你原来的高级震动：强度1.0，锐度1.0，持续0.6s ==========
-static void PlayStrongHaptic(void) {
-    if (!sharedHapticEngine) return;
-    NSError *err = nil;
-    CHHapticEventParameter *intensityParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0f];
-    CHHapticEventParameter *sharpnessParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:1.0f];
-    CHHapticEvent *event = [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticTransient parameters:@[intensityParam, sharpnessParam] relativeTime:0.0f duration:0.6f];
-    CHHapticPattern *pattern = [[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&err];
-    if (err || !pattern) return;
-    CHHapticPatternPlayer *player = [sharedHapticEngine createPlayerWithPattern:pattern error:&err];
-    if (err || !player) return;
-    [player startAtTime:0 error:&err];
+static UIViewController* getTopViewController(void) {
+    UIViewController *topVC = nil;
+    for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
+            for (UIWindow *win in scene.windows) {
+                if (win.isKeyWindow) {
+                    topVC = win.rootViewController;
+                    break;
+                }
+            }
+        }
+    }
+    while(topVC && topVC.presentedViewController) {
+        topVC = topVC.presentedViewController;
+    }
+    return topVC;
+}
+
+static void setTapGestureEnable(UIView *floatView, BOOL enable) {
+    for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
+        if([g isKindOfClass:[UITapGestureRecognizer class]]) {
+            UITapGestureRecognizer *tapGes = (UITapGestureRecognizer *)g;
+            if(tapGes.numberOfTapsRequired == 1) {
+                tapGes.enabled = enable;
+                break;
+            }
+        }
+    }
 }
 
 static UILabel* getTimeLabel(void) {
@@ -66,6 +84,7 @@ static void RestoreTimeBatteryLabel(void) {
         UILabel *lb = getTimeLabel();
         if(lb) {
             lb.hidden = NO;
+            lb.layer.zPosition = 999;
         }
     });
 }
@@ -76,11 +95,48 @@ static void HideTimeBatteryLabel(void) {
         UILabel *lb = getTimeLabel();
         if(lb) {
             lb.hidden = YES;
+            lb.layer.zPosition = -999;
         }
     });
 }
 
-#pragma mark - 时间电量刷新逻辑
+static void showVisibleMenu(UIView *floatView) {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    
+    UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        // ========= 新增：点击打开原生菜单，立刻隐藏时间电量条 =========
+        HideTimeBatteryLabel();
+        
+        for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
+            if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
+                UILongPressGestureRecognizer *longGes = (UILongPressGestureRecognizer *)g;
+                longGes.state = UIGestureRecognizerStateBegan;
+                longGes.state = UIGestureRecognizerStateRecognized;
+                break;
+            }
+        }
+    }];
+    
+    UIAlertAction *hideBallAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        floatView.alpha = 0.02f;
+        setTapGestureEnable(floatView, NO);
+    }];
+    
+    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
+        // ========= 新增：点击取消，恢复时间电量条 =========
+        RestoreTimeBatteryLabel();
+    }];
+    [alert addAction:nativeMenuAction];
+    [alert addAction:hideBallAction];
+    [alert addAction:cancelAction];
+    
+    UIViewController *topVC = getTopViewController();
+    if(topVC) {
+        [topVC presentViewController:alert animated:YES completion:nil];
+    }
+}
+
+#pragma mark - 刷新逻辑
 static void RefreshFloatLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         __block UIView *floatBall = nil;
@@ -89,8 +145,10 @@ static void RefreshFloatLabel(void) {
             for (UIWindow *win in scene.windows) {
                 __block void (^scanView)(UIView *) = nil;
                 scanView = ^(UIView *view) {
-                    if ([view isKindOfClass:NSClassFromString(@"AssistiveTouchButton")]) {
-                        floatBall = view;
+                    if ([view isKindOfClass:[UIImageView class]]) {
+                        if ((int)view.bounds.size.width == 44 && (int)view.bounds.size.height ==44) {
+                            floatBall = view;
+                        }
                     }
                     if ([view isKindOfClass:[UILabel class]]) {
                         UILabel *lb = (UILabel *)view;
@@ -120,14 +178,19 @@ static void RefreshFloatLabel(void) {
             customLabel.textColor = [UIColor whiteColor];
             customLabel.textAlignment = NSTextAlignmentCenter;
             customLabel.backgroundColor = [UIColor clearColor];
+            customLabel.layer.zPosition = 999;
             customLabel.userInteractionEnabled = NO;
             [parentView addSubview:customLabel];
         }
         CGRect ballFrame = floatBall.frame;
         customLabel.frame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
         
-        if(!nativeMenuActive){
-            customLabel.hidden = NO;
+        // 核心！严格跟随nativeMenuActive状态
+        customLabel.hidden = nativeMenuActive;
+        if(!nativeMenuActive) {
+            customLabel.layer.zPosition = 999;
+        } else {
+            customLabel.layer.zPosition = -999;
         }
         
         NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
@@ -139,41 +202,86 @@ static void RefreshFloatLabel(void) {
     });
 }
 
-// ========== 恢复悬浮球本体Hook：单击震动 + 原有长按隐藏逻辑 ==========
-%hook AssistiveTouchButton
-
-- (void)_handleSingleTap:(id)arg1 {
-    %orig;
-    PlayStrongHaptic();
+#pragma mark - 悬浮球Hook
+%hook UIImageView
+%new
+- (void)tweakLongPressAction:(UILongPressGestureRecognizer *)gesture {
+    if(gesture.state != UIGestureRecognizerStateBegan) return;
+    UIView *floatView = self;
+    if(floatView.alpha > 0.5f) {
+        showVisibleMenu(floatView);
+    } else {
+        floatView.alpha = 1.0f;
+        setTapGestureEnable(floatView, YES);
+        // ========= 悬浮球恢复显示的时候，恢复时间电量条 =========
+        RestoreTimeBatteryLabel();
+    }
 }
 
-- (void)_handleLongPress:(id)arg1 {
+- (void)didMoveToWindow {
     %orig;
-    // 原有的长按隐藏悬浮球逻辑，全部保留
-}
-
-%end
-
-// ✅ Hook长按手势，菜单弹出瞬间隐藏时间电量文字
-%hook UILongPressGestureRecognizer
-- (void)setState:(UIGestureRecognizerState)state {
-    %orig;
-    UIView *targetView = self.view;
-    if (!targetView) return;
-    if ([targetView isKindOfClass:NSClassFromString(@"AssistiveTouchButton")]) {
-        if(state == UIGestureRecognizerStateBegan) {
-            HideTimeBatteryLabel();
+    UIView *view = self;
+    if (view.bounds.size.width == 44 && view.bounds.size.height == 44) {
+        BOOL hasCustomLongPress = NO;
+        for(UIGestureRecognizer *g in view.gestureRecognizers) {
+            if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
+                UILongPressGestureRecognizer *longG = (UILongPressGestureRecognizer *)g;
+                if(longG.minimumPressDuration == 0.35f) {
+                    hasCustomLongPress = YES;
+                    break;
+                }
+            }
+        }
+        if(!hasCustomLongPress) {
+            UILongPressGestureRecognizer *longTap = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(tweakLongPressAction:)];
+            longTap.minimumPressDuration = 0.35f;
+            [view addGestureRecognizer:longTap];
         }
     }
 }
 %end
 
-// ✅ Hook菜单关闭事件，恢复时间电量文字
-%hook UIMenuController
-- (void)setMenuVisible:(BOOL)menuVisible animated:(BOOL)animated {
+// Hook菜单View关闭事件
+%hook UIView
+- (void)removeFromSuperview {
     %orig;
-    if(!menuVisible) {
+    if(nativeMenuActive) {
         RestoreTimeBatteryLabel();
+    }
+}
+%end
+
+%hook UITapGestureRecognizer
+- (void)setState:(UIGestureRecognizerState)state {
+    %orig;
+    if(state == UIGestureRecognizerStateRecognized) {
+        UIView *tapView = self.view;
+        if (!tapView) return;
+        if ([tapView isKindOfClass:[UIImageView class]] && tapView.bounds.size.width == 44 && tapView.bounds.size.height == 44) {
+            UITapGestureRecognizer *tapSelf = self;
+            if(tapSelf.numberOfTapsRequired == 1 && tapSelf.enabled) {
+                if (@available(iOS 13.0, *)) {
+                    if (!sharedHapticEngine) {
+                        UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
+                        [gen prepare];
+                        [gen impactOccurred];
+                        return;
+                    }
+                    NSError *error = nil;
+                    CHHapticEventParameter *intensityParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0];
+                    CHHapticEventParameter *sharpnessParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:1.0];
+                    CHHapticEvent *event = [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous parameters:@[intensityParam, sharpnessParam] relativeTime:0 duration:0.6];
+                    CHHapticPattern *pattern = [[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&error];
+                    if (!error) {
+                        [sharedHapticEngine startAndReturnError:nil];
+                        id<CHHapticPatternPlayer> player = [sharedHapticEngine createPlayerWithPattern:pattern error:&error];
+                        if (!error) {
+                            [player startAtTime:0 error:&error];
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 %end
