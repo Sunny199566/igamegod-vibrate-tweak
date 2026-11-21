@@ -4,7 +4,6 @@
 static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
 static NSTimer *floatLabelRefreshTimer = nil;
-static BOOL showTimeLabel = YES;
 static BOOL nativeMenuActive = NO;
 
 static void SetupHapticEngine(void) {
@@ -216,7 +215,6 @@ static void RefreshFloatLabel(void) {
 }
 %end
 
-// ✅ 核心Hook：UIViewController viewDidDisappear，原生菜单关闭完成，自动恢复时间电量条
 %hook UIViewController
 - (void)viewDidDisappear:(BOOL)animated {
     %orig;
