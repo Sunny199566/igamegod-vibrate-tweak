@@ -153,7 +153,7 @@ static void RefreshFloatLabel(void) {
         if (!g_timeBatteryLabel) {
             g_timeBatteryLabel = [[UILabel alloc] init];
             g_timeBatteryLabel.tag = kCustomTimeBatteryTag;
-            g_timeBatteryLabel.font = [UIFont systemFontOfSize:22 weight:UIFontWeightMedium];
+            g_timeBatteryLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
             g_timeBatteryLabel.textColor = [UIColor whiteColor];
             g_timeBatteryLabel.textAlignment = NSTextAlignmentCenter;
             g_timeBatteryLabel.backgroundColor = [UIColor clearColor];
