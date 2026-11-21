@@ -6,7 +6,6 @@
 static CHHapticEngine *sharedHapticEngine = nil;
 static const NSInteger kCustomTimeBatteryTag = 998877;
 static NSTimer *floatLabelRefreshTimer = nil;
-static BOOL nativeMenuActive = NO;
 
 static void SetupHapticEngine(void) {
     if (sharedHapticEngine != nil) return;
@@ -78,20 +77,8 @@ static UILabel* getTimeLabel(void) {
     return resultLabel;
 }
 
-static void RestoreTimeBatteryLabel(void) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        nativeMenuActive = NO;
-        UILabel *lb = getTimeLabel();
-        if(lb) {
-            lb.hidden = NO;
-            lb.layer.zPosition = 999;
-        }
-    });
-}
-
 static void HideTimeBatteryLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        nativeMenuActive = YES;
         UILabel *lb = getTimeLabel();
         if(lb) {
             lb.hidden = YES;
@@ -100,13 +87,20 @@ static void HideTimeBatteryLabel(void) {
     });
 }
 
+static void ShowTimeBatteryLabel(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UILabel *lb = getTimeLabel();
+        if(lb) {
+            lb.hidden = NO;
+            lb.layer.zPosition = 999;
+        }
+    });
+}
+
 static void showVisibleMenu(UIView *floatView) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"悬浮球操作" message:nil preferredStyle:UIAlertControllerStyleActionSheet];
     
     UIAlertAction *nativeMenuAction = [UIAlertAction actionWithTitle:@"打开原生菜单" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        // ========= 新增：点击打开原生菜单，立刻隐藏时间电量条 =========
-        HideTimeBatteryLabel();
-        
         for(UIGestureRecognizer *g in floatView.gestureRecognizers) {
             if([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
                 UILongPressGestureRecognizer *longGes = (UILongPressGestureRecognizer *)g;
@@ -120,11 +114,12 @@ static void showVisibleMenu(UIView *floatView) {
     UIAlertAction *hideBallAction = [UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         floatView.alpha = 0.02f;
         setTapGestureEnable(floatView, NO);
+        // 隐藏悬浮球之后，时间电量条保持显示，不做任何操作
     }];
     
     UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
-        // ========= 新增：点击取消，恢复时间电量条 =========
-        RestoreTimeBatteryLabel();
+        // 点击取消，恢复时间电量条显示
+        ShowTimeBatteryLabel();
     }];
     [alert addAction:nativeMenuAction];
     [alert addAction:hideBallAction];
@@ -185,14 +180,6 @@ static void RefreshFloatLabel(void) {
         CGRect ballFrame = floatBall.frame;
         customLabel.frame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
         
-        // 核心！严格跟随nativeMenuActive状态
-        customLabel.hidden = nativeMenuActive;
-        if(!nativeMenuActive) {
-            customLabel.layer.zPosition = 999;
-        } else {
-            customLabel.layer.zPosition = -999;
-        }
-        
         NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
         fmt.dateFormat = @"HH:mm";
         NSString *timeStr = [fmt stringFromDate:[NSDate date]];
@@ -209,12 +196,14 @@ static void RefreshFloatLabel(void) {
     if(gesture.state != UIGestureRecognizerStateBegan) return;
     UIView *floatView = self;
     if(floatView.alpha > 0.5f) {
+        // ========== 悬浮球可见：长按第一步，立刻隐藏时间电量条 ==========
+        HideTimeBatteryLabel();
+        // 然后再弹出自定义菜单
         showVisibleMenu(floatView);
     } else {
+        // ========== 悬浮球已经隐藏：长按恢复悬浮球，时间电量条保持原样，不修改 ==========
         floatView.alpha = 1.0f;
         setTapGestureEnable(floatView, YES);
-        // ========= 悬浮球恢复显示的时候，恢复时间电量条 =========
-        RestoreTimeBatteryLabel();
     }
 }
 
@@ -245,9 +234,10 @@ static void RefreshFloatLabel(void) {
 %hook UIView
 - (void)removeFromSuperview {
     %orig;
-    if(nativeMenuActive) {
-        RestoreTimeBatteryLabel();
-    }
+    // ActionSheet弹窗关闭之后，恢复时间电量条
+    dispatch_async(dispatch_get_main_queue(), ^{
+        ShowTimeBatteryLabel();
+    });
 }
 %end
 
