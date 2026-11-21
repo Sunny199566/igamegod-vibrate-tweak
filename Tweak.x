@@ -22,6 +22,20 @@ static void SetupHapticEngine(void) {
     }
 }
 
+// ========== 你原来的高级震动：强度1.0，锐度1.0，持续0.6s ==========
+static void PlayStrongHaptic(void) {
+    if (!sharedHapticEngine) return;
+    NSError *err = nil;
+    CHHapticEventParameter *intensityParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1.0f];
+    CHHapticEventParameter *sharpnessParam = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:1.0f];
+    CHHapticEvent *event = [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticTransient parameters:@[intensityParam, sharpnessParam] relativeTime:0.0f duration:0.6f];
+    CHHapticPattern *pattern = [[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&err];
+    if (err || !pattern) return;
+    CHHapticPatternPlayer *player = [sharedHapticEngine createPlayerWithPattern:pattern error:&err];
+    if (err || !player) return;
+    [player startAtTime:0 error:&err];
+}
+
 static UILabel* getTimeLabel(void) {
     __block UILabel *resultLabel = nil;
     for (UIWindowScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
@@ -66,7 +80,7 @@ static void HideTimeBatteryLabel(void) {
     });
 }
 
-#pragma mark - 刷新逻辑
+#pragma mark - 时间电量刷新逻辑
 static void RefreshFloatLabel(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         __block UIView *floatBall = nil;
@@ -75,10 +89,8 @@ static void RefreshFloatLabel(void) {
             for (UIWindow *win in scene.windows) {
                 __block void (^scanView)(UIView *) = nil;
                 scanView = ^(UIView *view) {
-                    if ([view isKindOfClass:[UIImageView class]]) {
-                        if ((int)view.bounds.size.width == 44 && (int)view.bounds.size.height ==44) {
-                            floatBall = view;
-                        }
+                    if ([view isKindOfClass:NSClassFromString(@"AssistiveTouchButton")]) {
+                        floatBall = view;
                     }
                     if ([view isKindOfClass:[UILabel class]]) {
                         UILabel *lb = (UILabel *)view;
@@ -114,7 +126,6 @@ static void RefreshFloatLabel(void) {
         CGRect ballFrame = floatBall.frame;
         customLabel.frame = CGRectMake(ballFrame.origin.x - 30, ballFrame.origin.y + ballFrame.size.height + 6, 110, 24);
         
-        // ✅ 定时器只在菜单关闭时打开文字，菜单打开状态完全不改动hidden属性
         if(!nativeMenuActive){
             customLabel.hidden = NO;
         }
@@ -128,23 +139,36 @@ static void RefreshFloatLabel(void) {
     });
 }
 
-// ✅ Hook悬浮球原生长按手势回调，这才是原生菜单触发点！
+// ========== 恢复悬浮球本体Hook：单击震动 + 原有长按隐藏逻辑 ==========
+%hook AssistiveTouchButton
+
+- (void)_handleSingleTap:(id)arg1 {
+    %orig;
+    PlayStrongHaptic();
+}
+
+- (void)_handleLongPress:(id)arg1 {
+    %orig;
+    // 原有的长按隐藏悬浮球逻辑，全部保留
+}
+
+%end
+
+// ✅ Hook长按手势，菜单弹出瞬间隐藏时间电量文字
 %hook UILongPressGestureRecognizer
 - (void)setState:(UIGestureRecognizerState)state {
     %orig;
     UIView *targetView = self.view;
     if (!targetView) return;
-    // 判断：目标是悬浮球（44x44 UIImageView）
-    if ([targetView isKindOfClass:[UIImageView class]] && (int)targetView.bounds.size.width ==44 && (int)targetView.bounds.size.height ==44) {
+    if ([targetView isKindOfClass:NSClassFromString(@"AssistiveTouchButton")]) {
         if(state == UIGestureRecognizerStateBegan) {
-            // ✅ 原生长按开始，立刻隐藏时间电量文字
             HideTimeBatteryLabel();
         }
     }
 }
 %end
 
-// ✅ Hook UIMenuController（原生菜单关闭事件），菜单消失恢复文字
+// ✅ Hook菜单关闭事件，恢复时间电量文字
 %hook UIMenuController
 - (void)setMenuVisible:(BOOL)menuVisible animated:(BOOL)animated {
     %orig;
